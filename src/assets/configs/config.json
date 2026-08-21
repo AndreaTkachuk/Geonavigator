@@ -1,0 +1,419 @@
+{
+  "version": "svil",
+  "debug": false,
+  "baseHref": "",
+  "themes": {
+    "data-theme": "light"
+  },
+  "applicationSettings": {
+    "enableActionDirectionPopup": true,
+    "listExcludeFieldsPopup": [
+      "Shape__Area",
+      "Shape__Length",
+      "SHAPE_AREA",
+      "SHAPE_LEN",
+      "SHAPE",
+      "SHAPE_Area",
+      "SHAPE_Length",
+      "Shape_Length",
+      "Shape_Area",
+      "Shape",
+      "symbolId",
+      "SHAPE_AREA"
+    ],
+    "nameWidgetDirections": "Directions",
+    "hiddenParameters": true,
+
+    "portalUrl": "https://www.arcgis.com/",
+    "preload": {
+
+      "active": true,
+      "background": "#297a38"
+    },
+    "viewerManagerConfigPath": "ViewerManager/viewerManager.json",
+    "logo": {
+      "light": {
+        "lg": {
+          "url": "assets/vue.svg"
+        },
+        "md": {
+          "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl.png"
+        },
+        "sm": {
+          "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl-bianco.png"
+        }
+      },
+      "dark": {
+        "lg": {
+          "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl.png"
+        },
+        "sm": {
+          "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl-bianco.png"
+        }
+      }
+    },
+    "topmenu": {
+      "active": true,
+      "links": [
+        {
+          "label": "Manuale",
+          "icon": "fa fa-book",
+          "urlManuale_loc": "https://localhost:4200/assets/docs/manuale.pdf",
+          "urlManuale_wt": "https://demoaria.wheretech.it/viewer40/assets/docs/manuale.pdf",
+          "urlManuale_gruppoiit": "https://www.gruppoiit.lispa.it/viewer40/assets/docs/manuale.pdf",
+          "urlManuale_prod": "https://www.cartografia.servizirl.it/viewer40/docs/manuale.pdf"
+        },
+        {
+          "label": "Supporto",
+          "icon": "esri-icon esri-icon-question",
+          "urlServerMail": {
+            "versionFile": "4.0",
+            "wsWarnings_loc": "https://localhost/viewer40-api/RLViewer/sendWarning",
+            "wsWarnings_wt": "https://demoaria.wheretech.it/viewer40-api/RLViewer/sendWarning",
+            "wsWarnings_gruppoiit": "https://www.gruppoiit.lispa.it/viewer40-api/RLViewer/sendWarning",
+            "wsWarnings": "https://www.cartografia.servizirl.it/viewer40-api/RLViewer/sendWarning"
+          }
+        }
+      ]
+    },
+    "titlePage": "Viewer GIS",
+    "titleApplication": "Geonavigatore",
+    "appId": "",
+    "formatDate": "dd/MM/yyyy",
+    "esriLocalLibs": false,
+    "exportMap": {
+      "defaultBasemap": {
+        "url": "",
+        "title": "World Imagery",
+        "opacity": 1,
+        "visible": true
+      }
+    },
+    "proxy": {
+      "proxyUrl": "",
+
+      "urlEsterni": [
+        "services.arcgis.com",
+        "utility.arcgis.com",
+        "arcgis.com",
+        "services.arcgisonline.com",
+        "geocode.arcgis.com",
+        "elevation.arcgis.com",
+        "landsat2.arcgis.com",
+        "sentinel.arcgis.com",
+        "server.arcgisonline.com"
+      ]
+    }
+  },
+  "map": {
+    "viewer": {
+      "mapId": [],
+      "type": "2D",
+      "viewCustom": [
+        {
+          "id": "aside-position",
+          "class": [],
+          "style": {
+            "top": "0",
+            "left": "0",
+            "min-height": "-webkit-fill-available"
+          }
+        },
+        {
+          "id": "footer-position",
+          "class": [],
+          "style": {
+            "position": "fixed",
+            "background-color": "#1b304c",
+            "bottom": "0px",
+            "left": "0",
+            "height": "35px",
+            "width": "100%",
+            "padding": "10px"
+          }
+        },
+        {
+          "id": "top-right-horizontal",
+          "class": ["bg-transparent", "d-flex", "justify-content-end"],
+          "style": {
+            "height": "32px",
+            "position": "absolute",
+            "gap": "10.3px",
+            "top": "15px",
+            "right": "57.3px"
+          }
+        },
+        {
+          "id": "top-left-horizontal",
+          "class": ["bg-transparent", "d-flex", "justify-content-end"],
+          "style": {
+            "height": "48px",
+            "position": "absolute",
+            "gap": "10.3px",
+            "top": "40px",
+            "left": "88px"
+          }
+        },
+        {
+          "id": "bottom-right-overView",
+          "class": [],
+          "style": {
+            "height": "32px",
+            "position": "absolute",
+            "gap": "10.3px",
+            "bottom": "15px",
+            "right": "15px"
+          }
+        }
+      ],
+      "settings": {
+        "tilt": 45,
+        "heading": 0,
+        "basemap": "osm",
+        "mode": "desktop",
+        "center": [7.3, 45.7],
+        "zoom": 11
+      },
+      "widgets": [
+        {
+          "name": "Barrier",
+          "position": "aside-position",
+          "visible": true,
+          "expandConfig": {
+            "expandIcon": "road-sign",
+            "expandTooltip": "Analisi di isolamento stradale"
+          }
+        },
+        {
+          "name": "Sample",
+          "position": "aside-position",
+          "visible": true,
+          "expandConfig": {
+            "expandIcon": "puzzle",
+            "expandTooltip": "Sample widget"
+          }
+        }
+      ],
+      "layers": [],
+      "table": {
+        "config": "AttributeTable/config.json"
+      }
+    },
+    "viewerMobile": {
+      "mapId": [],
+      "type": "2D",
+      "viewCustom": [
+        {
+          "id": "sideBar",
+          "class": [],
+          "style": {
+            "top": "0",
+            "left": "0"
+          }
+        },
+        {
+          "id": "footer-position",
+          "class": [],
+          "style": {
+            "position": "fixed",
+            "background-color": "#1b304c",
+            "bottom": "0px",
+            "left": "0",
+            "height": "30px",
+            "width": "100%",
+            "padding": "10px"
+          }
+        },
+        {
+          "id": "top-right-horizontal",
+          "class": ["bg-transparent", "d-flex", "justify-content-end"],
+          "style": {
+            "height": "32px",
+            "position": "absolute",
+            "gap": "10.3px",
+            "top": "15px",
+            "right": "57.3px"
+          }
+        },
+        {
+          "id": "top-left-horizontal",
+          "class": ["bg-transparent", "d-flex", "justify-content-end"],
+          "style": {
+            "height": "32px",
+            "position": "absolute",
+            "gap": "10.3px",
+            "top": "15px",
+            "left": "15px"
+          }
+        },
+        {
+          "id": "bottom-right-overView",
+          "class": [],
+          "style": {
+            "height": "32px",
+            "position": "absolute",
+            "gap": "10.3px",
+            "bottom": "15px",
+            "right": "15px"
+          }
+        }
+      ],
+      "settings": {
+        "tilt": 45,
+        "heading": 0,
+        "basemap": "osm",
+        "basemapDark": "osm",
+        "mode": "mobile",
+        "center": [9.766, 45.636],
+        "zoom": 8
+      },
+      "widgets": [
+        {
+          "name": "AddDataMobile",
+          "customWidget": true,
+          "visible": true,
+          "position": "sideBar",
+          "expandConfig": {
+            "titleCustom": true,
+            "helpCustom": "Tooltip test",
+            "expandIcon": "plus-circle",
+            "expandTooltip": "Aggiungi layer da geoportale",
+            "group": "aside-position"
+          },
+          "config": "AddDataMobile/config.json"
+        },
+        {
+          "name": "LayerList",
+          "customWidget": true,
+          "visible": true,
+          "position": "sideBar",
+          "expandConfig": {
+            "titleCustom": true,
+            "helpCustom": "Elenco dei layers caricati in mappa",
+            "expandIcon": "layers",
+            "_customExpandIcon": "https://logowik.com/content/uploads/images/795_home.jpg",
+            "__customExpandIcon": "LayerList/icon.jpg",
+            "group": "aside-position",
+            "expandTooltip": "Gestione del contenuto"
+          },
+          "config": "LayerList/config.json"
+        },
+        {
+          "name": "BasemapGallery",
+          "customWidget": true,
+          "visible": true,
+          "position": "sideBar",
+          "mapType": "2D",
+          "expandConfig": {
+            "titleCustom": true,
+            "helpCustom": "Tooltip test",
+            "expandIcon": "basemap",
+            "group": "aside-position",
+            "expandTooltip": "Sfondi"
+          },
+          "cssUrl": "BasemapGallery/style.css",
+          "config": "BasemapGallery/basemaps.json"
+        },
+        {
+          "name": "BasemapGallery",
+          "customWidget": true,
+          "visible": true,
+          "position": "sideBar",
+          "mapType": "3D",
+          "expandConfig": {
+            "titleCustom": true,
+            "helpCustom": "Tooltip test",
+            "expandIcon": "basemap",
+            "group": "aside-position",
+            "expandTooltip": "Sfondi"
+          },
+          "cssUrl": "BasemapGallery/style.css",
+          "config": "BasemapGallery/basemaps3D.json"
+        },
+        {
+          "name": "Bookmarks",
+          "customWidget": true,
+          "visible": true,
+          "position": "sideBar",
+          "expandConfig": {
+            "titleCustom": true,
+            "helpCustom": "Tooltip test",
+            "expandIcon": "bookmark",
+            "expandTooltip": "Segnalibro",
+            "group": "aside-position"
+          },
+          "config": "Bookmarks/config.json"
+        },
+        {
+          "name": "Search",
+          "position": "top-left-horizontal"
+        },
+        {
+          "name": "Locate",
+          "position": "top-right"
+        },
+        {
+          "name": "Home",
+          "position": "bottom-right",
+          "config": {
+            "viewpoint": {
+              "rotation": 0,
+              "scale": 2300000,
+              "targetGeometry": {
+                "type": "point",
+                "x": 9.766,
+                "y": 45.636
+              }
+            }
+          }
+        },
+        {
+          "name": "Zoom",
+          "position": "bottom-right"
+        },
+        {
+          "name": "Compass",
+          "config": {
+            "icon": "compass-needle"
+          },
+          "mapType": "2D",
+          "position": "top-left"
+        },
+        {
+          "name": "LoadingMap",
+          "customWidget": true,
+          "position": "bottom-left"
+        },
+        {
+          "name": "Change2D3D",
+          "customWidget": true,
+          "visible": true,
+          "position": "bottom-right"
+        },
+        {
+          "name": "ScaleBarText",
+          "customWidget": true,
+          "customStyle": {
+            "position": "absolute",
+            "left": "15px",
+            "top": "5px"
+          },
+          "position": "footer-position"
+        },
+        {
+          "name": "About",
+          "customWidget": true,
+          "customStyle": {
+            "position": "absolute",
+            "right": "15px",
+            "top": "5px"
+          },
+          "position": "footer-position",
+          "config": {
+            "text": "@Copyright Regione Lombardia - tutti i diritti riservati"
+          }
+        }
+      ]
+    }
+  }
+}
