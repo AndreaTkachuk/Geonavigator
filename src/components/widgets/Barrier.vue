@@ -28,7 +28,7 @@ function onCreate(event: any) {
 
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel'
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer'
 import GeoJSONLayer from '@arcgis/core/layers/GeoJSONLayer'
