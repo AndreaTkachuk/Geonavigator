@@ -13,7 +13,7 @@ import '@arcgis/map-components/dist/components/arcgis-zoom'
 import { useAppStore } from '../../stores/app.store'
 import '@arcgis/map-components/dist/components/arcgis-basemap-gallery'
 import '@arcgis/map-components/dist/components/arcgis-expand'
-// import BarrierWidget from '../widgets/BarrierWidget.vue' // TODO: uncomment when created
+import Barrier from '../../components/widgets/Barrier.vue'
 
 // Eagerly import all src/assets files so Vite bundles them with hashed URLs.
 // Config paths like "assets/vue.svg" are resolved by prepending "/src/".
@@ -33,6 +33,7 @@ const appStore = useAppStore()
 const router = useRouter()
 const mapEl = ref<any>(null)
 const mapIsReady = ref(false)
+const mapView = ref<any>(null)
 const activeWidget = ref<string | null>(null)
 
 function toggleDimension() {
@@ -198,6 +199,7 @@ let _initId = 0
 async function initializeMap(): Promise<void> {
   const myId = ++_initId
   mapIsReady.value = false
+  mapView.value = null
 
   await nextTick() // ensure v-if has swapped arcgis-map ↔ arcgis-scene in DOM
 
@@ -218,7 +220,10 @@ async function initializeMap(): Promise<void> {
 
   try {
     await Promise.race([el.viewOnReady(), timeout])
-    if (myId === _initId) mapIsReady.value = true
+    if (myId === _initId) {
+      mapIsReady.value = true
+      mapView.value = el.view
+    }
   } catch (err) {
     if (myId === _initId) console.error('[ViewerPage] Map initialization failed:', err)
   }
@@ -284,9 +289,9 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
               :style="panelStyle(item)"
             >
               <div class="widget-content">
-                <!-- <BarrierWidget v-if="item.key === 'barrier-widget'" /> -->
+                <Barrier v-if="item.key === 'Barrier'" :view="mapView" />
                 <!-- Add more widget conditionals as needed -->
-                <p style="color: #666; font-size: 0.9em;">Widget: {{ item.key }}</p>
+                <p v-else style="color: #666; font-size: 0.9em;">Widget: {{ item.key }}</p>
               </div>
             </li>
             <li v-if="item.separator" class="sidebar-separator" aria-hidden="true" />
