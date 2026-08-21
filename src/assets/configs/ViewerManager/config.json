@@ -1,0 +1,237 @@
+{
+    "scaleZoomPoint": 50000,
+    "importedLayersConfig": {
+        "defaultAlpha": 1
+    },
+    "initialBasemapCollectionPath": "BasemapGallery/basemaps.json",
+    "ctrltopo": {
+        "evidenzia": {
+            "color": [
+                0,
+                0,
+                0,
+                64
+            ],
+            "outline": {
+                "color": [
+                    255,
+                    0,
+                    0,
+                    122
+                ],
+                "width": 4,
+                "type": "esriSLS",
+                "style": "esriSLSSolid"
+            },
+            "type": "esriSFS",
+            "style": "esriSFSNull"
+        },
+        "layers": [
+            {
+                "url": "https://www.cartografia.servizirl.it/arcgis/rest/services/wsGazetteer/wsGazetteer11WM/MapServer/1",
+                "campo": "COD_ISTAT",
+                "tipo": "intero",
+                "layer": "WIZ_U32WG.VS_CO_CTR_09"
+            },
+            {
+                "url": "https://www.cartografia.servizirl.it/arcgis/rest/services/wsGazetteer/wsGazetteer11WM/MapServer/0",
+                "campo": "COD_PRO",
+                "tipo": "intero",
+                "layer": "WIZ_U32WG.VS_PROV"
+            }
+        ]
+    },
+    "defaultSymbol": [
+        {
+            "id": 1,
+            "symbol": {
+                "color": [
+                    194,
+                    240,
+                    255,
+                    128
+                ],
+                "size": 18,
+                "angle": 0,
+                "xoffset": 0,
+                "yoffset": 0,
+                "type": "esriSMS",
+                "style": "esriSMSCircle",
+                "outline": {
+                    "color": [
+                        101,
+                        179,
+                        200,
+                        255
+                    ],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                }
+            }
+        },
+        {
+            "id": 2,
+            "symbol": {
+                "color": [
+                    101,
+                    179,
+                    200,
+                    255
+                ],
+                "width": 2,
+                "type": "esriSLS",
+                "style": "esriSLSSolid"
+            }
+        },
+        {
+            "id": 3,
+            "symbol": {
+                "color": [
+                    194,
+                    240,
+                    255,
+                    255
+                ],
+                "outline": {
+                    "color": [
+                        101,
+                        179,
+                        200,
+                        255
+                    ],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                },
+                "type": "esriSFS",
+                "style": "esriSFSSolid"
+            }
+        },
+        {
+            "id": "104",
+            "symbol": {
+                "color": [
+                    194,
+                    240,
+                    255,
+                    255
+                ],
+                "outline": {
+                    "color": [
+                        101,
+                        179,
+                        200,
+                        255
+                    ],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                },
+                "type": "esriSFS",
+                "style": "esriSFSPolygon"
+            }
+        },
+        {
+            "id": "101",
+            "symbol": {
+                "color": [
+                    255,
+                    0,
+                    0,
+                    122
+                ],
+                "size": 15,
+                "angle": 0,
+                "xoffset": 0,
+                "yoffset": 0,
+                "type": "esriSMS",
+                "style": "esriSMSCircle",
+                "outline": {
+                    "color": [
+                        255,
+                        0,
+                        0,
+                        255
+                    ],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                }
+            }
+        },
+        {
+            "id": "102",
+            "symbol": {
+                "color": [
+                    0,
+                    0,
+                    255,
+                    128
+                ],
+                "size": 15,
+                "angle": 0,
+                "xoffset": 0,
+                "yoffset": 0,
+                "type": "esriSMS",
+                "style": "esriSMSCircle",
+                "outline": {
+                    "color": [
+                        0,
+                        0,
+                        255,
+                        255
+                    ],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                }
+            }
+        },
+        {
+            "id": "103",
+            "symbol": {
+                "style": "esriSMSPolyline",
+                "color": [
+                    255,
+                    0,
+                    0,
+                    255
+                ],
+                "width": 2,
+                "type": "esriSLS"
+            }
+        }
+    ],
+    "renderer": {
+        "type": "simple",
+        "symbol": {
+            "type": "simple-marker",
+            "style": "circle",
+            "color": [
+                226,
+                119,
+                40
+            ],
+            "size": 6,
+            "outline": {
+                "color": [
+                    255,
+                    255,
+                    255
+                ],
+                "width": 1
+            }
+        }
+    },
+    "rendererHighlight": {
+        "color": [
+            255,
+            255,
+            0,
+            0.3
+        ],
+        "haloOpacity": 0.9,
+        "fillOpacity": 0.2
+    }
+}
