@@ -5,14 +5,12 @@ import Map from '@arcgis/core/Map'
 import WebMap from '@arcgis/core/WebMap'
 import WebScene from '@arcgis/core/WebScene'
 import Basemap from '@arcgis/core/Basemap'
-import TileLayer from '@arcgis/core/layers/TileLayer'
 import WebTileLayer from '@arcgis/core/layers/WebTileLayer'
 import '@arcgis/map-components/dist/components/arcgis-map'
 import '@arcgis/map-components/dist/components/arcgis-scene'
 import '@arcgis/map-components/dist/components/arcgis-home'
 import '@arcgis/map-components/dist/components/arcgis-zoom'
 import { useAppStore } from '../../stores/app.store'
-import MapImageLayer from '@arcgis/core/layers/MapImageLayer'
 import '@arcgis/map-components/dist/components/arcgis-basemap-gallery'
 import '@arcgis/map-components/dist/components/arcgis-expand'
 // import BarrierWidget from '../widgets/BarrierWidget.vue' // TODO: uncomment when created
@@ -181,21 +179,21 @@ function resolveMap(): Map {
 
 let _initId = 0
 
-function createAreaTutelateLayer() {
-  return new MapImageLayer({
-    url: 'https://mappe.regione.vda.it/domini1/rest/services/Public/Ambiti/MapServer',
-    title: 'Aree Tutelate (Valle d\'Aosta)',
-    opacity: 0.8,
-    sublayers: [
-      { id: 0, visible: true },
-      { id: 1, visible: true },
-      { id: 2, visible: true },
-      { id: 3, visible: true },
-      { id: 4, visible: true },
-      { id: 5, visible: true },
-    ]
-  })
-}
+// function createAreaTutelateLayer() {
+//   return new MapImageLayer({
+//     url: 'https://mappe.regione.vda.it/domini1/rest/services/Public/Ambiti/MapServer',
+//     title: 'Aree Tutelate (Valle d\'Aosta)',
+//     opacity: 0.8,
+//     sublayers: [
+//       { id: 0, visible: true },
+//       { id: 1, visible: true },
+//       { id: 2, visible: true },
+//       { id: 3, visible: true },
+//       { id: 4, visible: true },
+//       { id: 5, visible: true },
+//     ]
+//   })
+// }
 
 async function initializeMap(): Promise<void> {
   const myId = ++_initId
