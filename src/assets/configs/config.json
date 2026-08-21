@@ -169,7 +169,7 @@
       "settings": {
         "tilt": 45,
         "heading": 0,
-        "basemap": "osm",
+        "basemap": "hybrid",
         "mode": "desktop",
         "center": [7.3, 45.7],
         "zoom": 11

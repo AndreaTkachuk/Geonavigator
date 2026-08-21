@@ -137,6 +137,29 @@ function resolveMapIdentifier(): string | undefined {
     ?? viewerConfig.value?.mapId[0]?.id
 }
 
+function createOsmBasemap(): Basemap {
+  return new Basemap({
+    baseLayers: [
+      new WebTileLayer({
+        urlTemplate: 'https://{subDomain}.tile.openstreetmap.org/{level}/{col}/{row}.png',
+        subDomains: ['a', 'b', 'c'],
+        copyright: '© OpenStreetMap contributors',
+      }),
+    ],
+    title: 'OpenStreetMap',
+  })
+}
+
+function resolveFallbackBasemap(): Basemap {
+  const basemapId = viewerConfig.value?.settings?.basemap
+  if (!basemapId || basemapId.toLowerCase() === 'osm') return createOsmBasemap()
+  // Legacy Esri basemap id, e.g. "hybrid" (imagery + labels), "satellite" (imagery only),
+  // "streets-vector", "topo-vector", "gray-vector", "dark-gray-vector", "oceans", "terrain".
+  // Note: new style-based ids ("arcgis-imagery", "arcgis-topographic", ...) need an ArcGIS
+  // Location Platform API key (esriConfig.apiKey), which this app does not configure.
+  return Basemap.fromId(basemapId) ?? createOsmBasemap()
+}
+
 function resolveMap(): Map {
   const mapId = resolveMapIdentifier()
 
@@ -144,18 +167,7 @@ function resolveMap(): Map {
     ? (is3D.value
         ? new WebScene({ portalItem: { id: mapId } })
         : new WebMap({ portalItem: { id: mapId } }))
-    : new Map({
-        basemap: new Basemap({
-          baseLayers: [
-            new WebTileLayer({
-              urlTemplate: 'https://{subDomain}.tile.openstreetmap.org/{level}/{col}/{row}.png',
-              subDomains: ['a', 'b', 'c'],
-              copyright: '© OpenStreetMap contributors',
-            }),
-          ],
-          title: 'OpenStreetMap',
-        }),
-      })
+    : new Map({ basemap: resolveFallbackBasemap() })
 
   // 👉 TEST LAYER ADD
   // const testLayer = createTestLayer()
@@ -298,7 +310,7 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
         <arcgis-map v-if="!is3D" ref="mapEl" class="map-container">
           <arcgis-home slot="top-left" />
           <arcgis-zoom slot="top-left" />
-          <arcgis-expand slot="bottom-right" expand-icon="basemap">
+          <arcgis-expand slot="top-right" expand-icon="basemap">
             <arcgis-basemap-gallery />
           </arcgis-expand>
         </arcgis-map>
