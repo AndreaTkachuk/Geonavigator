@@ -26,6 +26,7 @@ const blockedCount = ref(0)
 const disconnectedCount = ref(0)
 const isSketchReady = ref(false)
 const isDrawing = ref(false)
+const isEditingBarrier = ref(false)
 const crossingsCount = ref(0)
 const isResetConfirming = ref(false)
 let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
@@ -39,7 +40,9 @@ let crossings: Crossing[] = []
 let roadsLayer: GeoJSONLayer | null = null
 let sketchLayer: GraphicsLayer | null = null
 let cutGraphicsLayer: GraphicsLayer | null = null
+let cutMarkersLayer: GraphicsLayer | null = null
 let sketchVM: SketchViewModel | null = null
+const SELECT_CLICK_COOLDOWN_MS = 600
 
 function log(msg: string) {
   logMessages.value.unshift(msg)
@@ -118,8 +121,9 @@ function initializeLayers() {
 
   sketchLayer = new GraphicsLayer({ title: 'Barriere' })
   cutGraphicsLayer = new GraphicsLayer({ title: 'Strade tagliate' })
+  cutMarkersLayer = new GraphicsLayer({ title: 'Punti di taglio' })
 
-  props.view.map.addMany([roadsLayer, sketchLayer, cutGraphicsLayer])
+  props.view.map.addMany([roadsLayer, sketchLayer, cutGraphicsLayer, cutMarkersLayer])
 
   // Aspetta che il layer sia caricato
   roadsLayer.load().then(async () => {
@@ -127,16 +131,50 @@ function initializeLayers() {
     sketchVM = new SketchViewModel({
       view: props.view,
       layer: sketchLayer,
+      // Selezionare una barriera esistente con un click la fa entrare in
+      // modalita' di modifica nativa Esri (reshape/move + icona di eliminazione),
+      // senza bisogno di un hit-test/listener di click custom.
+      updateOnGraphicClick: true,
+      defaultUpdateOptions: { tool: 'reshape' } as any,
       polylineSymbol: { type: 'simple-line' as const, color: [255, 165, 0], width: 3, style: 'dash' as const } as any,
     })
+
+    // Il click (o il secondo click di un doppio click) che completa un
+    // disegno/spostamento puo' cadere esattamente sulla barriera appena
+    // creata/aggiornata: disabilitare temporaneamente updateOnGraphicClick
+    // evita che riavvii subito un'altra sessione di update su quello stesso click.
+    function suppressGraphicClickBriefly() {
+      if (!sketchVM) return
+      sketchVM.updateOnGraphicClick = false
+      setTimeout(() => {
+        if (sketchVM) sketchVM.updateOnGraphicClick = true
+      }, SELECT_CLICK_COOLDOWN_MS)
+    }
 
     sketchVM.on('create', (event) => {
       if (event.state === 'complete') {
         isDrawing.value = false
-        handleBarrierDrawn(event.graphic?.geometry)
+        suppressGraphicClickBriefly()
+        recomputeAndApply('Barriera disegnata: ricalcolo...')
       } else if (event.state === 'cancel') {
         isDrawing.value = false
       }
+    })
+
+    sketchVM.on('update', (event) => {
+      if (event.state === 'start' || event.state === 'active') {
+        isEditingBarrier.value = true
+      } else if (event.state === 'complete') {
+        isEditingBarrier.value = false
+        suppressGraphicClickBriefly()
+        recomputeAndApply('Barriera spostata: ricalcolo...')
+      }
+    })
+
+    sketchVM.on('delete', () => {
+      isEditingBarrier.value = false
+      suppressGraphicClickBriefly()
+      recomputeAndApply('Barriera eliminata: ricalcolo...')
     })
 
     isSketchReady.value = true
@@ -163,77 +201,92 @@ function touchesNodeKey(polyline: any, targetKey: string): boolean {
   return firstKey === targetKey || lastKey === targetKey
 }
 
-function handleBarrierDrawn(rawBarrierGeometry: any) {
-  if (!roadGraph || !allFeatures.length) {
-    log('Grafo non ancora pronto')
-    return
-  }
+// Ricostruisce da zero l'intero array `crossings` a partire da TUTTE le
+// geometrie attualmente presenti in sketchLayer (non solo l'ultima disegnata),
+// cosi' che spostare o eliminare una barriera si rifletta correttamente
+// sull'analisi. Riusa la stessa logica di taglio geometrico gia' esistente,
+// applicata in sequenza per ciascuna barriera (una strada viene tagliata dalla
+// prima barriera che la interseca, coerente col comportamento precedente).
+function rebuildCrossings(): void {
+  crossings = []
+  crossingsCount.value = 0
+  cutMarkersLayer?.removeAll()
 
-  let barrierGeometry = rawBarrierGeometry
+  if (!sketchLayer || !roadGraph || !allFeatures.length) return
 
-  try {
-    if (webMercatorUtils.canProject(rawBarrierGeometry, { wkid: 4326 })) {
-      barrierGeometry = webMercatorUtils.webMercatorToGeographic(rawBarrierGeometry)
-    }
-  } catch (err) {
-    console.warn('Riproiezione barriera non riuscita:', err)
-  }
+  const barrierGraphics = sketchLayer.graphics.toArray()
 
-  let crossedCount = 0
+  barrierGraphics.forEach((graphic: any) => {
+    let barrierGeometry = graphic.geometry
 
-  allFeatures.forEach((f) => {
-    const oid = f.attributes.OBJECTID
-
-    if (crossings.some((c) => c.oid === oid)) return
-
-    const roadGeom = f.geometry as any
-    if (!geometryEngine.intersects(roadGeom, barrierGeometry)) return
-
-    const parts = geometryEngine.cut(roadGeom, barrierGeometry) as any[]
-    if (!parts || parts.length < 2) {
-      console.warn(`OID ${oid}: intersects ma cut() non ha prodotto 2+ pezzi`)
-      return
+    try {
+      if (webMercatorUtils.canProject(barrierGeometry, { wkid: 4326 })) {
+        barrierGeometry = webMercatorUtils.webMercatorToGeographic(barrierGeometry)
+      }
+    } catch (err) {
+      console.warn('Riproiezione barriera non riuscita:', err)
     }
 
-    // Type guard for polyline
-    if (!roadGeom.paths || !Array.isArray(roadGeom.paths[0])) {
-      console.warn(`OID ${oid}: geometry is not a valid polyline`)
-      return
-    }
+    allFeatures.forEach((f) => {
+      const oid = f.attributes.OBJECTID
 
-    const paths = roadGeom.paths[0]
-    const start = getNodeKey(paths[0][0], paths[0][1])
-    const end = getNodeKey(paths[paths.length - 1][0], paths[paths.length - 1][1])
+      if (crossings.some((c) => c.oid === oid)) return
 
-    let partStart = parts.find((p: any) => touchesNodeKey(p, start))
-    let partEnd = parts.find((p: any) => touchesNodeKey(p, end))
+      const roadGeom = f.geometry as any
+      if (!geometryEngine.intersects(roadGeom, barrierGeometry)) return
 
-    if (!partStart) partStart = parts[0]
-    if (!partEnd) partEnd = parts[parts.length - 1]
+      const parts = geometryEngine.cut(roadGeom, barrierGeometry) as any[]
+      if (!parts || parts.length < 2) {
+        console.warn(`OID ${oid}: intersects ma cut() non ha prodotto 2+ pezzi`)
+        return
+      }
 
-    const cutNodeA = `CUT_A_${oid}`
-    const cutNodeB = `CUT_B_${oid}`
+      // Type guard for polyline
+      if (!roadGeom.paths || !Array.isArray(roadGeom.paths[0])) {
+        console.warn(`OID ${oid}: geometry is not a valid polyline`)
+        return
+      }
 
-    crossings.push({ oid, start, end, cutNodeA, cutNodeB, partStart, partEnd })
-    crossingsCount.value = crossings.length
-    crossedCount++
+      const paths = roadGeom.paths[0]
+      const start = getNodeKey(paths[0][0], paths[0][1])
+      const end = getNodeKey(paths[paths.length - 1][0], paths[paths.length - 1][1])
 
-    // Marker sul punto di taglio
-    const cutPt = (partStart as any).paths[0][(partStart as any).paths[0].length - 1]
-    sketchLayer?.add(
-      new Graphic({
-        geometry: { type: 'point', x: cutPt[0], y: cutPt[1], spatialReference: { wkid: 4326 } } as any,
-        symbol: { type: 'simple-marker', color: [0, 0, 0], size: 9, style: 'x' } as any,
-      })
-    )
+      let partStart = parts.find((p: any) => touchesNodeKey(p, start))
+      let partEnd = parts.find((p: any) => touchesNodeKey(p, end))
+
+      if (!partStart) partStart = parts[0]
+      if (!partEnd) partEnd = parts[parts.length - 1]
+
+      const cutNodeA = `CUT_A_${oid}`
+      const cutNodeB = `CUT_B_${oid}`
+
+      crossings.push({ oid, start, end, cutNodeA, cutNodeB, partStart, partEnd })
+      crossingsCount.value = crossings.length
+
+      // Marker sul punto di taglio
+      const cutPt = (partStart as any).paths[0][(partStart as any).paths[0].length - 1]
+      cutMarkersLayer?.add(
+        new Graphic({
+          geometry: { type: 'point', x: cutPt[0], y: cutPt[1], spatialReference: { wkid: 4326 } } as any,
+          symbol: { type: 'simple-marker', color: [0, 0, 0], size: 9, style: 'x' } as any,
+        })
+      )
+    })
   })
+}
 
-  if (crossedCount === 0) {
-    log('Nessuna nuova strada tagliata')
+// Punto d'ingresso comune per creazione, spostamento ed eliminazione di una
+// barriera: ricostruisce l'analisi da zero sullo stato attuale delle barriere
+// e aggiorna la UI di conseguenza.
+function recomputeAndApply(actionMessage: string) {
+  log(actionMessage)
+  rebuildCrossings()
+
+  if (!sketchLayer || sketchLayer.graphics.length === 0) {
+    applyCleanState()
     return
   }
 
-  log(`Barriera disegnata: ${crossedCount} strada/e tagliata/e`)
   updateHighlight()
 }
 
@@ -320,7 +373,7 @@ function updateHighlight() {
 }
 
 function startDrawing() {
-  if (!sketchVM || !isSketchReady.value) return
+  if (!sketchVM || !isSketchReady.value || isEditingBarrier.value) return
 
   if (isDrawing.value) {
     sketchVM.cancel?.()
@@ -332,12 +385,15 @@ function startDrawing() {
   isDrawing.value = true
 }
 
-function performReset() {
-  sketchLayer?.removeAll()
+// Stato "pulito" equivalente a dopo un Ripristina: usato sia dal bottone
+// "Ripristina" (che in aggiunta svuota anche sketchLayer e il log) sia in
+// automatico quando l'eliminazione dell'ultima barriera rimasta lascia
+// sketchLayer vuoto.
+function applyCleanState() {
   cutGraphicsLayer?.removeAll()
+  cutMarkersLayer?.removeAll()
   crossings = []
   crossingsCount.value = 0
-  logMessages.value = []
   blockedCount.value = 0
   disconnectedCount.value = 0
   statusText.value = `Grafo pronto: ${roadGraph?.size ?? 0} nodi, ${allFeatures.length} strade`
@@ -348,6 +404,12 @@ function performReset() {
       symbol: { type: 'simple-line' as const, color: [128, 128, 128], width: 1.5 } as any,
     }
   }
+}
+
+function performReset() {
+  sketchLayer?.removeAll()
+  applyCleanState()
+  logMessages.value = []
 }
 
 function resetAnalysis() {
@@ -422,7 +484,7 @@ onUnmounted(() => {
         <button
           class="btn btn-primary"
           type="button"
-          :disabled="!isSketchReady"
+          :disabled="!isSketchReady || isEditingBarrier"
           @click="startDrawing"
         >
           <i class="mdi" :class="isDrawing ? 'mdi-close' : 'mdi-pencil'" />
@@ -443,6 +505,10 @@ onUnmounted(() => {
       <div v-if="!isSketchReady" class="sketch-ready-hint">
         <span class="mini-spinner" />
         Preparazione strumenti di disegno...
+      </div>
+      <div v-else-if="isEditingBarrier" class="sketch-ready-hint">
+        <span class="mini-spinner" />
+        Modifica barriera in corso...
       </div>
 
       <!-- Log Messages -->
