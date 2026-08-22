@@ -73,7 +73,7 @@
 .dim-toggle {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent-deep);
+  color: #0066cc;
   font-weight: 600;
 }
 
@@ -137,7 +137,7 @@
 .sidebar-icon {
   flex: 0 0 auto;
   font-size: 1.25rem;
-  color: var(--accent-deep);
+  color: #0066cc;
   width: 24px;
   text-align: center;
 }
@@ -161,7 +161,7 @@
   background: transparent;
   cursor: pointer;
   white-space: nowrap;
-  color: var(--accent-deep);
+  color: #0066cc;
   font-size: 0.9rem;
   transition: background 120ms;
   width: 100%;
