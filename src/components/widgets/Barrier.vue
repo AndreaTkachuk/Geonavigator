@@ -268,7 +268,13 @@ function rebuildCrossings(): void {
       cutMarkersLayer?.add(
         new Graphic({
           geometry: { type: 'point', x: cutPt[0], y: cutPt[1], spatialReference: { wkid: 4326 } } as any,
-          symbol: { type: 'simple-marker', color: [0, 0, 0], size: 9, style: 'x' } as any,
+          symbol: {
+            type: 'simple-marker',
+            color: [230, 126, 34],
+            size: 14,
+            style: 'x',
+            outline: { color: [255, 255, 255], width: 1.5 },
+          } as any,
         })
       )
     })

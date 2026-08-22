@@ -124,7 +124,7 @@
 }
 
 .sidebar-item:hover {
-  background: var(--accent-soft);
+  background: rgba(230, 126, 34, 0.14);
 }
 
 .sidebar-separator {
@@ -169,7 +169,7 @@
 }
 
 .sidebar-footer:hover {
-  background: var(--accent-soft);
+  background: rgba(230, 126, 34, 0.14);
 }
 
 .map-stage {
