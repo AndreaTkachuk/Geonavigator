@@ -64,6 +64,29 @@ function log(msg: string) {
   if (logMessages.value.length > 10) logMessages.value.pop()
 }
 
+// Il click (o il secondo click di un doppio click) che completa un
+// disegno/spostamento puo' cadere esattamente sulla barriera appena
+// creata/aggiornata: disabilitare temporaneamente updateOnGraphicClick evita
+// che riavvii subito un'altra sessione di update su quello stesso click.
+function suppressGraphicClickBriefly() {
+  if (!sketchVM) return
+  sketchVM.updateOnGraphicClick = false
+  setTimeout(() => {
+    if (sketchVM) sketchVM.updateOnGraphicClick = true
+  }, SELECT_CLICK_COOLDOWN_MS)
+}
+
+// Esce da un'eventuale sessione di disegno/modifica ancora attiva. Va
+// chiamato prima di qualsiasi azione che muta i graphics dall'esterno
+// (Ripristina, eliminazione dalla lista, zoom su una barriera): farlo
+// mentre SketchViewModel sta ancora mostrando le maniglie di editing puo'
+// lasciare overlay non sincronizzati con lo stato/camera successivo.
+function cancelActiveSketchSession() {
+  sketchVM?.cancel()
+  isDrawing.value = false
+  isEditingBarrier.value = false
+}
+
 async function loadRoads() {
   try {
     isLoading.value = true
@@ -163,18 +186,6 @@ function initializeLayers() {
         : { tool: 'reshape' }) as any,
       polylineSymbol: { type: 'simple-line' as const, color: [255, 165, 0], width: 3, style: 'dash' as const } as any,
     })
-
-    // Il click (o il secondo click di un doppio click) che completa un
-    // disegno/spostamento puo' cadere esattamente sulla barriera appena
-    // creata/aggiornata: disabilitare temporaneamente updateOnGraphicClick
-    // evita che riavvii subito un'altra sessione di update su quello stesso click.
-    function suppressGraphicClickBriefly() {
-      if (!sketchVM) return
-      sketchVM.updateOnGraphicClick = false
-      setTimeout(() => {
-        if (sketchVM) sketchVM.updateOnGraphicClick = true
-      }, SELECT_CLICK_COOLDOWN_MS)
-    }
 
     sketchVM.on('create', (event: any) => {
       if (event.state === 'active' && event.toolEventInfo?.type === 'vertex-add') {
@@ -386,6 +397,13 @@ function zoomToBarrier(barrierId: string) {
   const extent = graphic?.geometry?.extent
   if (!extent) return
 
+  // Uscire prima da un'eventuale sessione di modifica attiva: spostare la
+  // camera mentre SketchViewModel sta ancora mostrando le maniglie di editing
+  // su un grafico puo' lasciare l'overlay di editing disallineato rispetto
+  // alla nuova posizione della camera (visivamente incoerente finche' non si
+  // interagisce di nuovo con la mappa).
+  cancelActiveSketchSession()
+
   // goTo su un'extent (fit automatico) puo' comportarsi in modo imprevedibile
   // per un target piccolo come un segmento breve, soprattutto in vista 3D
   // (SceneView), dove puo' risultare in uno zoom-out eccessivo invece che un
@@ -401,6 +419,23 @@ function zoomToBarrier(barrierId: string) {
   props.view.goTo({ target: extent.center, scale }).catch((err: any) => {
     if (err?.name !== 'AbortError') console.warn('goTo barriera error:', err)
   })
+}
+
+// Elimina una singola barriera dalla lista (senza passare dall'icona nativa
+// Esri sulla mappa). Esce prima da un'eventuale sessione di modifica attiva
+// (anche su un'altra barriera) per evitare di alterare i graphics mentre
+// SketchViewModel ha ancora un'operazione in corso, poi ricalcola l'analisi
+// esattamente come dopo un'eliminazione via mappa.
+function deleteBarrier(barrierId: string) {
+  if (!sketchLayer) return
+
+  const graphic = sketchLayer.graphics.toArray().find((g: any) => g.attributes?.barrierId === barrierId)
+  if (!graphic) return
+
+  cancelActiveSketchSession()
+  sketchLayer.remove(graphic)
+  suppressGraphicClickBriefly()
+  recomputeAndApply('Barriera eliminata: ricalcolo...')
 }
 
 function updateHighlight(): DisconnectionResult | undefined {
@@ -523,6 +558,7 @@ function applyCleanState() {
 }
 
 function performReset() {
+  cancelActiveSketchSession()
   sketchLayer?.removeAll()
   applyCleanState()
   logMessages.value = []
@@ -650,6 +686,14 @@ onUnmounted(() => {
             >
               <i class="mdi mdi-magnify-plus-outline" />
             </button>
+            <button
+              type="button"
+              class="barrier-zoom-btn barrier-delete-btn"
+              :aria-label="'Elimina ' + b.label"
+              @click="deleteBarrier(b.id)"
+            >
+              <i class="mdi mdi-trash-can-outline" />
+            </button>
           </div>
           <div class="barrier-row barrier-row-total">
             <span class="barrier-row-label">Totale</span>
@@ -659,6 +703,7 @@ onUnmounted(() => {
             <span class="barrier-row-metric isolated">
               <i class="mdi mdi-map-marker-off-outline" />{{ disconnectedCount }}
             </span>
+            <span class="barrier-zoom-btn-spacer" />
             <span class="barrier-zoom-btn-spacer" />
           </div>
         </div>
@@ -972,6 +1017,12 @@ onUnmounted(() => {
 .barrier-zoom-btn:hover {
   background: var(--barrier-primary);
   border-color: var(--barrier-primary);
+  color: #fff;
+}
+
+.barrier-delete-btn:hover {
+  background: #c62828;
+  border-color: #c62828;
   color: #fff;
 }
 
