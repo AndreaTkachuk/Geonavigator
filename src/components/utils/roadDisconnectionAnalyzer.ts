@@ -6,12 +6,17 @@ export interface Crossing {
   cutNodeB: string
   partStart: any // Polyline geometry
   partEnd: any
+  barrierId: string
 }
 
 export interface DisconnectionResult {
   disconnectedOids: number[]
   disconnectedCutSides: Map<number, 'A' | 'B' | 'both'>
   blockedOids: number[]
+  // Attribuzione per-barriera degli oid isolati: oid -> barrierId "proprietario".
+  // Vedi il commento sopra il suo calcolo per la convenzione usata quando una
+  // tasca isolata e' delimitata da piu' barriere contemporaneamente.
+  disconnectedOidBarrier: Map<number, string>
 }
 
 type RoadGraph = Map<string, Array<{ neighbor: string; oid: number }>>
@@ -86,6 +91,7 @@ export function analyzeDisconnection(
       disconnectedOids: [],
       disconnectedCutSides: new Map(),
       blockedOids: [],
+      disconnectedOidBarrier: new Map(),
     }
   }
 
@@ -115,6 +121,10 @@ export function analyzeDisconnection(
 
   const disconnectedOids = new Set<number>()
   const disconnectedComponents: Set<string>[] = []
+  // oid isolati introdotti da ciascuna componente disconnessa, in parallelo
+  // con disconnectedComponents (stesso indice) — serve per l'attribuzione
+  // per-barriera piu' sotto.
+  const disconnectedComponentOids: Set<number>[] = []
 
   for (const comps of groups.values()) {
     if (comps.length <= 1) continue
@@ -123,11 +133,16 @@ export function analyzeDisconnection(
 
     for (let i = 1; i < comps.length; i++) {
       disconnectedComponents.push(comps[i])
+      const compOids = new Set<number>()
       for (const node of comps[i]) {
         for (const { neighbor, oid } of scratch.get(node) || []) {
-          if (comps[i].has(neighbor)) disconnectedOids.add(oid)
+          if (comps[i].has(neighbor)) {
+            disconnectedOids.add(oid)
+            compOids.add(oid)
+          }
         }
       }
+      disconnectedComponentOids.push(compOids)
     }
   }
 
@@ -142,9 +157,39 @@ export function analyzeDisconnection(
     else if (bDisconnected) disconnectedCutSides.set(oid, 'B')
   })
 
+  // Attribuzione per-barriera degli oid isolati: ogni componente disconnessa
+  // (tasca di strade isolate) viene attribuita interamente a UNA sola
+  // barriera — per convenzione quella il cui crossing (cutNodeA o cutNodeB)
+  // delimita la componente e appare per primo nell'array `crossings`, cioe'
+  // la prima barriera disegnata tra quelle coinvolte. Se una tasca e'
+  // delimitata da piu' barriere contemporaneamente (isolamento combinato),
+  // viene comunque assegnata a una sola di esse con questa regola: cosi' ogni
+  // oid isolato ha esattamente un proprietario e la somma dei conteggi
+  // per-barriera coincide sempre col totale disconnectedOids.
+  const disconnectedOidBarrier = new Map<number, string>()
+
+  disconnectedComponents.forEach((comp, i) => {
+    const owningCrossing = crossings.find((c) => comp.has(c.cutNodeA) || comp.has(c.cutNodeB))
+    if (!owningCrossing) return
+
+    for (const oid of disconnectedComponentOids[i]) {
+      disconnectedOidBarrier.set(oid, owningCrossing.barrierId)
+    }
+  })
+
+  if (import.meta.env?.DEV) {
+    const attributedCount = disconnectedOidBarrier.size
+    if (attributedCount !== disconnectedOids.size) {
+      console.warn(
+        `[roadDisconnectionAnalyzer] attribuzione per-barriera incompleta: ${attributedCount}/${disconnectedOids.size} oid isolati attribuiti a una barriera`
+      )
+    }
+  }
+
   return {
     disconnectedOids: [...disconnectedOids],
     disconnectedCutSides,
     blockedOids,
+    disconnectedOidBarrier,
   }
 }

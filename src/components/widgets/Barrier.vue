@@ -7,7 +7,18 @@ import Graphic from '@arcgis/core/Graphic'
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine'
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils'
 import { loadRoadData, getNodeKey } from '../utils/roadDataLoader'
-import { analyzeDisconnection, type Crossing } from '../utils/roadDisconnectionAnalyzer'
+import {
+  analyzeDisconnection,
+  type Crossing,
+  type DisconnectionResult,
+} from '../utils/roadDisconnectionAnalyzer'
+
+interface BarrierSummary {
+  id: string
+  label: string
+  cutCount: number
+  isolatedCount: number
+}
 
 const props = defineProps<{
   view: any
@@ -29,12 +40,16 @@ const isDrawing = ref(false)
 const isEditingBarrier = ref(false)
 const crossingsCount = ref(0)
 const isResetConfirming = ref(false)
+const barriers = ref<BarrierSummary[]>([])
 let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
 
 // Data
 let roadGraph: Map<string, Array<{ neighbor: string; oid: number }>> | null = null
 let allFeatures: any[] = []
 let crossings: Crossing[] = []
+// Contatore progressivo per id/etichetta delle barriere: non si riassegna
+// mai, cosi' eliminare una barriera in mezzo alla lista non rinumera le altre.
+let nextBarrierNumber = 1
 
 // Layers
 let roadsLayer: GeoJSONLayer | null = null
@@ -172,6 +187,12 @@ function initializeLayers() {
         }
       } else if (event.state === 'complete') {
         isDrawing.value = false
+        // Id/etichetta assegnati qui, sul graphic stesso: sopravvivono a
+        // spostamenti/reshape e restano leggibili da rebuildCrossings.
+        if (event.graphic) {
+          const n = nextBarrierNumber++
+          event.graphic.attributes = { barrierId: `barrier-${n}`, barrierLabel: `Barriera ${n}` }
+        }
         suppressGraphicClickBriefly()
         recomputeAndApply('Barriera disegnata: ricalcolo...')
       } else if (event.state === 'cancel') {
@@ -239,6 +260,7 @@ function rebuildCrossings(): void {
   const barrierGraphics = sketchLayer.graphics.toArray()
 
   barrierGraphics.forEach((graphic: any) => {
+    const barrierId = graphic.attributes?.barrierId ?? 'barrier-unknown'
     let barrierGeometry = graphic.geometry
 
     try {
@@ -292,7 +314,7 @@ function rebuildCrossings(): void {
       const cutNodeA = `CUT_A_${oid}`
       const cutNodeB = `CUT_B_${oid}`
 
-      crossings.push({ oid, start, end, cutNodeA, cutNodeB, partStart, partEnd })
+      crossings.push({ oid, start, end, cutNodeA, cutNodeB, partStart, partEnd, barrierId })
       crossingsCount.value = crossings.length
 
       // Marker sul punto di taglio
@@ -325,11 +347,52 @@ function recomputeAndApply(actionMessage: string) {
     return
   }
 
-  updateHighlight()
+  const result = updateHighlight()
+  if (result) barriers.value = buildBarrierSummaries(result)
 }
 
-function updateHighlight() {
-  if (!roadsLayer || !roadGraph) return
+// Ricava i dati per-barriera (strade tagliate/isolate) dal risultato
+// dell'analisi, nell'ordine in cui le barriere compaiono in sketchLayer
+// (che coincide con l'ordine di creazione, non riassegnato alle eliminazioni).
+function buildBarrierSummaries(result: DisconnectionResult): BarrierSummary[] {
+  if (!sketchLayer) return []
+
+  const cutCountByBarrier = new Map<string, number>()
+  crossings.forEach((c) => {
+    cutCountByBarrier.set(c.barrierId, (cutCountByBarrier.get(c.barrierId) ?? 0) + 1)
+  })
+
+  const isolatedCountByBarrier = new Map<string, number>()
+  result.disconnectedOidBarrier.forEach((barrierId) => {
+    isolatedCountByBarrier.set(barrierId, (isolatedCountByBarrier.get(barrierId) ?? 0) + 1)
+  })
+
+  return sketchLayer.graphics.toArray().map((graphic: any) => {
+    const id = graphic.attributes?.barrierId ?? 'barrier-unknown'
+    const label = graphic.attributes?.barrierLabel ?? 'Barriera'
+    return {
+      id,
+      label,
+      cutCount: cutCountByBarrier.get(id) ?? 0,
+      isolatedCount: isolatedCountByBarrier.get(id) ?? 0,
+    }
+  })
+}
+
+function zoomToBarrier(barrierId: string) {
+  if (!sketchLayer || !props.view) return
+
+  const graphic: any = sketchLayer.graphics.toArray().find((g: any) => g.attributes?.barrierId === barrierId)
+  const extent = graphic?.geometry?.extent
+  if (!extent) return
+
+  props.view.goTo(extent.expand(4)).catch((err: any) => {
+    if (err?.name !== 'AbortError') console.warn('goTo barriera error:', err)
+  })
+}
+
+function updateHighlight(): DisconnectionResult | undefined {
+  if (!roadsLayer || !roadGraph) return undefined
 
   const result = analyzeDisconnection(roadGraph, crossings)
   const { disconnectedOids, disconnectedCutSides, blockedOids } = result
@@ -408,6 +471,8 @@ function updateHighlight() {
       },
     } as any
   }
+
+  return result
 }
 
 function startDrawing() {
@@ -434,6 +499,7 @@ function applyCleanState() {
   crossingsCount.value = 0
   blockedCount.value = 0
   disconnectedCount.value = 0
+  barriers.value = []
   statusText.value = `Grafo pronto: ${roadGraph?.size ?? 0} nodi, ${allFeatures.length} strade`
 
   if (roadsLayer) {
@@ -526,7 +592,7 @@ onUnmounted(() => {
           @click="startDrawing"
         >
           <i class="mdi" :class="isDrawing ? 'mdi-close' : 'mdi-pencil'" />
-          {{ isDrawing ? 'Annulla disegno' : 'Disegna barriera' }}
+          {{ isDrawing ? 'Annulla disegno' : 'Aggiungi barriera' }}
         </button>
         <button
           class="btn btn-secondary"
@@ -548,6 +614,44 @@ onUnmounted(() => {
         <span class="mini-spinner" />
         Modifica barriera in corso...
       </div>
+
+      <!-- Lista barriere -->
+      <div v-if="barriers.length > 0" class="barrier-list">
+        <div class="widget-log-title">
+          <i class="mdi mdi-format-list-bulleted" />
+          Lista barriere
+        </div>
+        <div class="barrier-rows">
+          <div v-for="b in barriers" :key="b.id" class="barrier-row">
+            <span class="barrier-row-label">{{ b.label }}</span>
+            <span class="barrier-row-metric cut">
+              <i class="mdi mdi-close-octagon-outline" />{{ b.cutCount }}
+            </span>
+            <span class="barrier-row-metric isolated">
+              <i class="mdi mdi-map-marker-off-outline" />{{ b.isolatedCount }}
+            </span>
+            <button
+              type="button"
+              class="barrier-zoom-btn"
+              :aria-label="'Zoom su ' + b.label"
+              @click="zoomToBarrier(b.id)"
+            >
+              <i class="mdi mdi-magnify-plus-outline" />
+            </button>
+          </div>
+          <div class="barrier-row barrier-row-total">
+            <span class="barrier-row-label">Totale</span>
+            <span class="barrier-row-metric cut">
+              <i class="mdi mdi-close-octagon-outline" />{{ blockedCount }}
+            </span>
+            <span class="barrier-row-metric isolated">
+              <i class="mdi mdi-map-marker-off-outline" />{{ disconnectedCount }}
+            </span>
+            <span class="barrier-zoom-btn-spacer" />
+          </div>
+        </div>
+      </div>
+      <p v-else class="barrier-list-empty">Nessuna barriera disegnata</p>
 
       <!-- Log Messages -->
       <div v-if="logMessages.length > 0" class="widget-log">
@@ -763,12 +867,106 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
-.widget-log {
+.widget-log,
+.barrier-list {
   border-radius: 6px;
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(17, 32, 25, 0.06);
   overflow: hidden;
+}
+
+.barrier-rows {
+  padding: 4px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.barrier-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+}
+
+.barrier-row:last-child {
+  border-bottom: none;
+}
+
+.barrier-row-label {
+  flex: 1 1 auto;
+  color: var(--text-strong);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barrier-row-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-width: 26px;
+  color: var(--text);
+}
+
+.barrier-row-metric.cut {
+  color: var(--barrier-primary-deep);
+}
+
+.barrier-row-metric.isolated {
+  color: #c62828;
+}
+
+.barrier-zoom-btn,
+.barrier-zoom-btn-spacer {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+}
+
+.barrier-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+
+.barrier-zoom-btn:hover {
+  background: var(--barrier-neutral-soft);
+}
+
+.barrier-row-total {
+  margin-top: 2px;
+  padding: 6px 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  border-top: 1px solid var(--line);
+  border-bottom: none;
+  background: var(--barrier-neutral-soft);
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.barrier-row-total .barrier-row-label {
+  font-weight: 700;
+}
+
+.barrier-list-empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text);
+  opacity: 0.75;
 }
 
 .widget-log-title {
