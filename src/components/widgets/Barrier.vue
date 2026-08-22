@@ -119,7 +119,10 @@ function initializeLayers() {
     },
   })
 
-  sketchLayer = new GraphicsLayer({ title: 'Barriere' })
+  // elevationInfo 'on-the-ground' clampa la barriera al terreno: niente
+  // maniglia verticale per alzarla/abbassarla in 3D, l'altezza si regola
+  // sempre in automatico seguendo la superficie.
+  sketchLayer = new GraphicsLayer({ title: 'Barriere', elevationInfo: { mode: 'on-the-ground' } as any })
   cutGraphicsLayer = new GraphicsLayer({ title: 'Strade tagliate' })
   cutMarkersLayer = new GraphicsLayer({ title: 'Punti di taglio' })
 
@@ -135,7 +138,13 @@ function initializeLayers() {
       // modalita' di modifica nativa Esri (reshape/move + icona di eliminazione),
       // senza bisogno di un hit-test/listener di click custom.
       updateOnGraphicClick: true,
-      defaultUpdateOptions: { tool: 'reshape' } as any,
+      // reshape permette di spostare i due punti esistenti, ma edgeOperation
+      // 'none' impedisce di aggiungerne altri cliccando/trascinando il
+      // segmento: la barriera resta sempre un semplice segmento a 2 punti.
+      defaultUpdateOptions: {
+        tool: 'reshape',
+        reshapeOptions: { edgeOperation: 'none', vertexOperation: 'move' },
+      } as any,
       polylineSymbol: { type: 'simple-line' as const, color: [255, 165, 0], width: 3, style: 'dash' as const } as any,
     })
 
@@ -151,8 +160,16 @@ function initializeLayers() {
       }, SELECT_CLICK_COOLDOWN_MS)
     }
 
-    sketchVM.on('create', (event) => {
-      if (event.state === 'complete') {
+    sketchVM.on('create', (event: any) => {
+      if (event.state === 'active' && event.toolEventInfo?.type === 'vertex-add') {
+        // La barriera e' sempre un segmento semplice: appena viene
+        // posizionato il secondo punto, chiude automaticamente il disegno
+        // senza richiedere un doppio click e senza permettere altri vertici.
+        const vertexCount = event.graphic?.geometry?.paths?.[0]?.length ?? 0
+        if (vertexCount >= 2) {
+          sketchVM?.complete()
+        }
+      } else if (event.state === 'complete') {
         isDrawing.value = false
         suppressGraphicClickBriefly()
         recomputeAndApply('Barriera disegnata: ricalcolo...')
