@@ -30,7 +30,7 @@
 }
 
 .brand-logo {
-  height: 52px;
+  height: 60px;
   width: auto;
   object-fit: contain;
 }
@@ -124,7 +124,7 @@
 }
 
 .sidebar-item:hover {
-  background: rgba(230, 126, 34, 0.14);
+  background: rgba(17, 32, 25, 0.05);
 }
 
 .sidebar-separator {
@@ -169,7 +169,7 @@
 }
 
 .sidebar-footer:hover {
-  background: rgba(230, 126, 34, 0.14);
+  background: rgba(17, 32, 25, 0.05);
 }
 
 .map-stage {

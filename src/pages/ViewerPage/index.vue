@@ -37,6 +37,12 @@ const mapEl = ref<any>(null)
 const mapIsReady = ref(false)
 const mapView = ref<any>(null)
 const activeWidget = ref<string | null>(null)
+// Chiave dei widget montati almeno una volta: una volta apparso, il
+// contenuto resta nel DOM (nascosto con v-show) invece di essere distrutto
+// alla chiusura dell'accordion, cosi' widget come Barrier non perdono il
+// loro stato (barriere disegnate, analisi, ecc.) quando si chiude e si
+// riapre il pannello.
+const openedWidgetKeys = ref<string[]>([])
 
 function toggleDimension() {
   router.push({ name: is3D.value ? 'map2D' : 'map3D' })
@@ -48,6 +54,7 @@ function toggleWidget(key: string) {
     return
   }
   activeWidget.value = key
+  if (!openedWidgetKeys.value.includes(key)) openedWidgetKeys.value.push(key)
   if (!appStore.sidebarOpen) appStore.toggleSidebar()
 }
 
@@ -280,7 +287,8 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
               />
             </li>
             <li
-              v-if="activeWidget === item.key && appStore.sidebarOpen"
+              v-if="openedWidgetKeys.includes(item.key)"
+              v-show="activeWidget === item.key && appStore.sidebarOpen"
               class="accordion-panel"
               :style="panelStyle(item)"
             >
