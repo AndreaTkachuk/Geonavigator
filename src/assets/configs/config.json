@@ -34,7 +34,7 @@
     "logo": {
       "light": {
         "lg": {
-          "url": "assets/vue.svg"
+          "url": "/assets/logo_regione_orizzontale_transparent.png"
         },
         "md": {
           "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl.png"
@@ -45,7 +45,7 @@
       },
       "dark": {
         "lg": {
-          "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl.png"
+          "url": "/assets/logo_regione_orizzontale_transparent.png"
         },
         "sm": {
           "url": "assets/themes/bootstrap-lombardia/assets/img/logo-rl-bianco.png"

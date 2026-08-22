@@ -21,7 +21,9 @@ const _assetModules = import.meta.glob<string>('/src/assets/**/*', { eager: true
 
 function resolveAssetUrl(url: string | undefined): string {
   if (!url) return ''
-  if (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:')) return url
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  // Root-absolute paths (files served from /public) still need the app's base path prefixed.
+  if (url.startsWith('/')) return import.meta.env.BASE_URL + url.slice(1)
   return (_assetModules[`/src/${url}`] as string) ?? url
 }
 
@@ -58,9 +60,6 @@ function panelStyle(item: SidebarItem): Record<string, string> {
 }
 
 const viewerConfig = computed(() => appStore.currentMapConfig)
-const pageTitle = computed(
-  () => appStore.config?.applicationSettings.titleApplication ?? 'Viewer geografico'
-)
 const logoUrl = computed(
   () => resolveAssetUrl(appStore.config?.applicationSettings.logo?.light?.lg?.url)
 )
@@ -240,10 +239,7 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
     <header class="viewer-header">
       <div class="brand-block">
         <img v-if="logoUrl" class="brand-logo" :src="logoUrl" alt="Logo" />
-        <div class="brand-copy">
-          <p class="brand-kicker">Hello GIS</p>
-          <h1>{{ pageTitle }}</h1>
-        </div>
+        <span class="demo-badge">DEMO</span>
       </div>
 
       <div class="header-actions">
