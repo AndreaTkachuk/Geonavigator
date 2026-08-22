@@ -57,7 +57,9 @@ onUnmounted(() => {
 #app-root {
   width: 100%;
   height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   position: relative;
 }
 

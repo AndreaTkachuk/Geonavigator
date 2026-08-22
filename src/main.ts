@@ -4,6 +4,7 @@ import App from './App.vue'
 import { router } from './stores/router/index'
 import { useAppStore } from './stores/app.store.ts'
 import type { AppConfig } from './stores/router/types/config.types'
+import './style.css'
 import '@arcgis/core/assets/esri/themes/light/main.css'
 import '@mdi/font/css/materialdesignicons.css'
 
