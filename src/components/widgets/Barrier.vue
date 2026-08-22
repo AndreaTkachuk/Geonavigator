@@ -386,7 +386,19 @@ function zoomToBarrier(barrierId: string) {
   const extent = graphic?.geometry?.extent
   if (!extent) return
 
-  props.view.goTo(extent.expand(4)).catch((err: any) => {
+  // goTo su un'extent (fit automatico) puo' comportarsi in modo imprevedibile
+  // per un target piccolo come un segmento breve, soprattutto in vista 3D
+  // (SceneView), dove puo' risultare in uno zoom-out eccessivo invece che un
+  // avvicinamento. Calcoliamo quindi noi una scala esplicita da un'estensione
+  // con un margine minimo garantito, che si comporta in modo prevedibile
+  // tanto in 2D quanto in 3D.
+  const MIN_SPAN_METERS = 300
+  const span = Math.max(extent.width, extent.height, MIN_SPAN_METERS) * 4
+  // Fattore empirico: una vista di "span" metri di lato occupa circa
+  // l'intera larghezza della mappa a questa scala (~ metri per pixel * larghezza tipica).
+  const scale = span * 12
+
+  props.view.goTo({ target: extent.center, scale }).catch((err: any) => {
     if (err?.name !== 'AbortError') console.warn('goTo barriera error:', err)
   })
 }
@@ -651,7 +663,10 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-      <p v-else class="barrier-list-empty">Nessuna barriera disegnata</p>
+      <p v-else class="barrier-list-empty">
+        <i class="mdi mdi-information-outline" />
+        Nessuna barriera disegnata
+      </p>
 
       <!-- Log Messages -->
       <div v-if="logMessages.length > 0" class="widget-log">
@@ -877,7 +892,7 @@ onUnmounted(() => {
 }
 
 .barrier-rows {
-  padding: 4px 12px;
+  padding: 4px 10px;
   display: flex;
   flex-direction: column;
 }
@@ -886,9 +901,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
+  padding: 7px 6px;
+  margin: 0 -6px;
+  border-radius: 5px;
   border-bottom: 1px solid var(--line);
   font-size: 11.5px;
+  transition: background 0.12s ease;
+}
+
+.barrier-row:not(.barrier-row-total):hover {
+  background: var(--barrier-neutral-soft);
 }
 
 .barrier-row:last-child {
@@ -907,10 +929,15 @@ onUnmounted(() => {
 .barrier-row-metric {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: 0 0 auto;
-  min-width: 26px;
+  min-width: 30px;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.barrier-row-metric .mdi {
+  font-size: 13px;
 }
 
 .barrier-row-metric.cut {
@@ -924,8 +951,8 @@ onUnmounted(() => {
 .barrier-zoom-btn,
 .barrier-zoom-btn-spacer {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
 }
 
 .barrier-zoom-btn {
@@ -939,22 +966,23 @@ onUnmounted(() => {
   cursor: pointer;
   font-size: 13px;
   padding: 0;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .barrier-zoom-btn:hover {
-  background: var(--barrier-neutral-soft);
+  background: var(--barrier-primary);
+  border-color: var(--barrier-primary);
+  color: #fff;
 }
 
 .barrier-row-total {
   margin-top: 2px;
-  padding: 6px 8px;
-  margin-left: -8px;
-  margin-right: -8px;
+  padding: 7px 8px 7px 10px;
   border-top: 1px solid var(--line);
   border-bottom: none;
+  border-left: 3px solid var(--barrier-primary);
   background: var(--barrier-neutral-soft);
-  border-radius: 4px;
+  border-radius: 5px;
   font-weight: 700;
 }
 
@@ -964,6 +992,9 @@ onUnmounted(() => {
 
 .barrier-list-empty {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11.5px;
   color: var(--text);
   opacity: 0.75;
