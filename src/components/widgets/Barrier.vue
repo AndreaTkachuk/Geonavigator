@@ -1,34 +1,5 @@
-<!-- <script setup lang="ts">
-import '@arcgis/map-components/dist/components/arcgis-sketch'
-
-defineProps<{
-  view?: any
-}>()
-
-function onCreate(event: any) {
-  console.log('[Barrier] arcgisCreate', event.detail.state, event.detail.graphic)
-}
-</script>
-
-<template>
-  <div class="barrier-panel">
-    <h3>Analisi isolamento stradale</h3>
-    <arcgis-sketch v-if="view" :view="view" @arcgisCreate="onCreate" />
-  </div>
-</template>
-
-<style scoped>
-.barrier-panel {
-  /* padding: 26px; */
-  background: white;
-}
-</style> -->
-
-
-
-
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel'
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer'
 import GeoJSONLayer from '@arcgis/core/layers/GeoJSONLayer'
@@ -53,6 +24,11 @@ const statusText = ref('Caricamento dati strade...')
 const logMessages = ref<string[]>([])
 const blockedCount = ref(0)
 const disconnectedCount = ref(0)
+const isSketchReady = ref(false)
+const isDrawing = ref(false)
+const crossingsCount = ref(0)
+const isResetConfirming = ref(false)
+let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
 
 // Data
 let roadGraph: Map<string, Array<{ neighbor: string; oid: number }>> | null = null
@@ -156,9 +132,14 @@ function initializeLayers() {
 
     sketchVM.on('create', (event) => {
       if (event.state === 'complete') {
+        isDrawing.value = false
         handleBarrierDrawn(event.graphic?.geometry)
+      } else if (event.state === 'cancel') {
+        isDrawing.value = false
       }
     })
+
+    isSketchReady.value = true
 
     // Zoom to roads extent
     try {
@@ -234,6 +215,7 @@ function handleBarrierDrawn(rawBarrierGeometry: any) {
     const cutNodeB = `CUT_B_${oid}`
 
     crossings.push({ oid, start, end, cutNodeA, cutNodeB, partStart, partEnd })
+    crossingsCount.value = crossings.length
     crossedCount++
 
     // Marker sul punto di taglio
@@ -338,15 +320,23 @@ function updateHighlight() {
 }
 
 function startDrawing() {
-  if (sketchVM) {
-    sketchVM.create('polyline')
+  if (!sketchVM || !isSketchReady.value) return
+
+  if (isDrawing.value) {
+    sketchVM.cancel?.()
+    isDrawing.value = false
+    return
   }
+
+  sketchVM.create('polyline')
+  isDrawing.value = true
 }
 
-function resetAnalysis() {
+function performReset() {
   sketchLayer?.removeAll()
   cutGraphicsLayer?.removeAll()
   crossings = []
+  crossingsCount.value = 0
   logMessages.value = []
   blockedCount.value = 0
   disconnectedCount.value = 0
@@ -360,11 +350,36 @@ function resetAnalysis() {
   }
 }
 
+function resetAnalysis() {
+  if (crossingsCount.value === 0) return
+
+  if (!isResetConfirming.value) {
+    isResetConfirming.value = true
+    if (resetConfirmTimer) clearTimeout(resetConfirmTimer)
+    resetConfirmTimer = setTimeout(() => {
+      isResetConfirming.value = false
+      resetConfirmTimer = null
+    }, 4000)
+    return
+  }
+
+  if (resetConfirmTimer) {
+    clearTimeout(resetConfirmTimer)
+    resetConfirmTimer = null
+  }
+  isResetConfirming.value = false
+  performReset()
+}
+
 onMounted(async () => {
   await loadRoads()
   if (!isLoading.value && !loadError.value) {
     initializeLayers()
   }
+})
+
+onUnmounted(() => {
+  if (resetConfirmTimer) clearTimeout(resetConfirmTimer)
 })
 </script>
 
@@ -377,6 +392,7 @@ onMounted(async () => {
     </div>
 
     <div v-else-if="loadError" class="widget-error">
+      <i class="mdi mdi-alert-circle-outline" />
       <p><strong>Errore:</strong> {{ loadError }}</p>
     </div>
 
@@ -384,29 +400,61 @@ onMounted(async () => {
     <div v-else class="widget-content">
       <div class="widget-status">
         <p class="status-text">{{ statusText }}</p>
-        <div class="stats">
-          <span v-if="blockedCount > 0" class="stat-item blocked">
-            🚫 {{ blockedCount }} tagliata/e
-          </span>
-          <span v-if="disconnectedCount > 0" class="stat-item disconnected">
-            ❌ {{ disconnectedCount }} isolate
-          </span>
+        <div v-if="blockedCount > 0 || disconnectedCount > 0" class="stats">
+          <div v-if="blockedCount > 0" class="stat-card blocked">
+            <i class="mdi mdi-close-octagon-outline stat-icon" />
+            <div class="stat-body">
+              <span class="stat-value">{{ blockedCount }}</span>
+              <span class="stat-label">tagliata/e</span>
+            </div>
+          </div>
+          <div v-if="disconnectedCount > 0" class="stat-card disconnected">
+            <i class="mdi mdi-map-marker-off-outline stat-icon" />
+            <div class="stat-body">
+              <span class="stat-value">{{ disconnectedCount }}</span>
+              <span class="stat-label">isolate</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="widget-controls">
-        <button class="btn btn-primary" @click="startDrawing">
-          <i class="mdi mdi-pencil" /> Disegna barriera
+        <button
+          class="btn btn-primary"
+          type="button"
+          :disabled="!isSketchReady"
+          @click="startDrawing"
+        >
+          <i class="mdi" :class="isDrawing ? 'mdi-close' : 'mdi-pencil'" />
+          {{ isDrawing ? 'Annulla disegno' : 'Disegna barriera' }}
         </button>
-        <button class="btn btn-secondary" @click="resetAnalysis">
-          <i class="mdi mdi-refresh" /> Ripristina
+        <button
+          class="btn btn-secondary"
+          type="button"
+          :class="{ 'btn-warning': isResetConfirming }"
+          :disabled="crossingsCount === 0"
+          @click="resetAnalysis"
+        >
+          <i class="mdi" :class="isResetConfirming ? 'mdi-alert-outline' : 'mdi-refresh'" />
+          {{ isResetConfirming ? 'Conferma ripristino?' : 'Ripristina' }}
         </button>
+      </div>
+
+      <div v-if="!isSketchReady" class="sketch-ready-hint">
+        <span class="mini-spinner" />
+        Preparazione strumenti di disegno...
       </div>
 
       <!-- Log Messages -->
       <div v-if="logMessages.length > 0" class="widget-log">
-        <div v-for="(msg, idx) in logMessages" :key="idx" class="log-entry">
-          {{ msg }}
+        <div class="widget-log-title">
+          <i class="mdi mdi-text-box-outline" />
+          Registro operazioni
+        </div>
+        <div class="log-entries">
+          <div v-for="(msg, idx) in logMessages" :key="idx" class="log-entry">
+            {{ msg }}
+          </div>
         </div>
       </div>
     </div>
@@ -415,15 +463,24 @@ onMounted(async () => {
 
 <style scoped>
 .barrier-widget {
-  background: white;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --barrier-primary: #45566b;
+  --barrier-primary-deep: #313e4d;
+  --barrier-neutral: #8b96a3;
+  --barrier-neutral-soft: rgba(139, 150, 163, 0.16);
+
+  background: var(--surface-strong);
+  font-family: var(--font-sans);
   font-size: 13px;
-  color: #333;
+  color: var(--text);
 }
 
 .widget-loading,
 .widget-error {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
   text-align: center;
 }
 
@@ -431,11 +488,11 @@ onMounted(async () => {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #0066cc;
+  border: 3px solid var(--barrier-neutral-soft);
+  border-top: 3px solid var(--barrier-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 @keyframes spin {
@@ -448,61 +505,95 @@ onMounted(async () => {
 }
 
 .widget-error {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 4px;
-  color: #856404;
+  color: var(--text-strong);
+}
+
+.widget-error .mdi {
+  font-size: 24px;
+  color: #b45309;
 }
 
 .widget-content {
-  padding: 16px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .widget-status {
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .status-text {
-  margin: 0 0 8px 0;
+  margin: 0;
   font-weight: 600;
-  color: #333;
+  color: var(--text-strong);
 }
 
 .stats {
   display: flex;
-  gap: 12px;
-  margin-top: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.stat-item {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 3px;
-  font-size: 12px;
-  font-weight: 600;
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgba(17, 32, 25, 0.06);
 }
 
-.stat-item.blocked {
-  background: #e3f2fd;
-  color: #1565c0;
+.stat-icon {
+  font-size: 20px;
+  flex: 0 0 auto;
 }
 
-.stat-item.disconnected {
-  background: #ffebee;
+.stat-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.stat-card.blocked .stat-icon,
+.stat-card.blocked .stat-value {
+  color: var(--barrier-primary-deep);
+}
+
+.stat-card.disconnected .stat-icon,
+.stat-card.disconnected .stat-value {
   color: #c62828;
 }
 
 .widget-controls {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
 .btn {
   flex: 1;
   padding: 8px 12px;
-  border: none;
-  border-radius: 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -510,51 +601,100 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: all 0.2s;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .btn-primary {
-  background: #0066cc;
-  color: white;
+  background: var(--barrier-primary);
+  color: #fff;
 }
 
-.btn-primary:hover {
-  background: #0052a3;
+.btn-primary:hover:not(:disabled) {
+  background: var(--barrier-primary-deep);
 }
 
 .btn-secondary {
-  background: #f0f0f0;
-  color: #333;
-  border: 1px solid #ddd;
+  background: var(--surface);
+  color: var(--text-strong);
+  border-color: var(--line);
 }
 
-.btn-secondary:hover {
-  background: #e0e0e0;
+.btn-secondary:hover:not(:disabled) {
+  background: var(--barrier-neutral-soft);
+  border-color: var(--barrier-neutral);
+}
+
+.btn-secondary.btn-warning {
+  background: #fff3cd;
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.btn-secondary.btn-warning:hover:not(:disabled) {
+  background: #ffe9a8;
+}
+
+.sketch-ready-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.mini-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--barrier-neutral-soft);
+  border-top: 2px solid var(--barrier-neutral);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex: 0 0 auto;
 }
 
 .widget-log {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(17, 32, 25, 0.06);
+  overflow: hidden;
+}
+
+.widget-log-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-strong);
+  border-bottom: 1px solid var(--line);
+}
+
+.log-entries {
   max-height: 150px;
   overflow-y: auto;
-  background: #f9f9f9;
-  border: 1px solid #eee;
-  border-radius: 3px;
-  padding: 8px;
+  padding: 6px 12px;
 }
 
 .log-entry {
   font-size: 11px;
-  color: #666;
+  color: var(--text);
   padding: 4px 0;
-  border-bottom: 1px solid #f0f0f0;
-  font-family: 'Monaco', 'Courier New', monospace;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
 }
 
 .log-entry:last-child {
   border-bottom: none;
-}
-
-.mdi {
-  width: 16px;
-  height: 16px;
 }
 </style>
