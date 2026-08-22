@@ -138,13 +138,14 @@ function initializeLayers() {
       // modalita' di modifica nativa Esri (reshape/move + icona di eliminazione),
       // senza bisogno di un hit-test/listener di click custom.
       updateOnGraphicClick: true,
-      // reshape permette di spostare i due punti esistenti, ma edgeOperation
-      // 'none' impedisce di aggiungerne altri cliccando/trascinando il
-      // segmento: la barriera resta sempre un semplice segmento a 2 punti.
-      defaultUpdateOptions: {
-        tool: 'reshape',
-        reshapeOptions: { edgeOperation: 'none', vertexOperation: 'move' },
-      } as any,
+      // reshape permette di spostare i due punti esistenti. reshapeOptions e'
+      // documentato come "only supported in 3D, partially in 2D": impostarlo
+      // anche in 2D puo' rompere il semplice spostamento dei vertici, quindi
+      // si applica solo in vista 3D, dove serve per impedire di aggiungere
+      // altri punti trascinando il segmento.
+      defaultUpdateOptions: (props.view?.type === '3d'
+        ? { tool: 'reshape', reshapeOptions: { edgeOperation: 'none', vertexOperation: 'move' } }
+        : { tool: 'reshape' }) as any,
       polylineSymbol: { type: 'simple-line' as const, color: [255, 165, 0], width: 3, style: 'dash' as const } as any,
     })
 
@@ -201,8 +202,12 @@ function initializeLayers() {
       if (roadsLayer?.fullExtent) {
         await props.view.goTo(roadsLayer.fullExtent)
       }
-    } catch (err) {
-      console.warn('goTo error:', err)
+    } catch (err: any) {
+      // goTo si interrompe normalmente se una nuova navigazione lo sostituisce
+      // (es. l'utente muove la mappa durante il caricamento): non è un errore.
+      if (err?.name !== 'AbortError') {
+        console.warn('goTo error:', err)
+      }
     }
   }).catch((err) => {
     console.error('Error loading roads layer:', err)
@@ -274,6 +279,16 @@ function rebuildCrossings(): void {
       if (!partStart) partStart = parts[0]
       if (!partEnd) partEnd = parts[parts.length - 1]
 
+      // Spostando una barriera il taglio puo' cadere molto vicino a un nodo
+      // stradale e produrre un pezzo degenere (senza vertici): scartalo
+      // invece di crashare leggendo un punto inesistente.
+      const startPath = (partStart as any)?.paths?.[0]
+      const endPath = (partEnd as any)?.paths?.[0]
+      if (!startPath?.length || !endPath?.length) {
+        console.warn(`OID ${oid}: taglio degenere, pezzo senza vertici`)
+        return
+      }
+
       const cutNodeA = `CUT_A_${oid}`
       const cutNodeB = `CUT_B_${oid}`
 
@@ -281,7 +296,7 @@ function rebuildCrossings(): void {
       crossingsCount.value = crossings.length
 
       // Marker sul punto di taglio
-      const cutPt = (partStart as any).paths[0][(partStart as any).paths[0].length - 1]
+      const cutPt = startPath[startPath.length - 1]
       cutMarkersLayer?.add(
         new Graphic({
           geometry: { type: 'point', x: cutPt[0], y: cutPt[1], spatialReference: { wkid: 4326 } } as any,
