@@ -10,9 +10,4 @@
   </div>
 </template>
 
-<style scoped>
-.sample-widget-panel {
-  padding: 16px;
-  background: white;
-}
-</style>
+<style src="./Sample.css" scoped></style>
