@@ -9,7 +9,6 @@ import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtil
 import { loadRoadData, getNodeKey } from '../utils/roadDataLoader'
 import {
   analyzeDisconnection,
-  getAllComponentsOnGraph,
   type Crossing,
   type DisconnectionResult,
 } from '../utils/roadDisconnectionAnalyzer'
@@ -92,14 +91,6 @@ async function loadRoads() {
 
     statusText.value = `Grafo pronto: ${roadGraph.size} nodi, ${allFeatures.length} strade`
     log(`Grafo costruito: ${roadGraph.size} nodi`)
-
-    // DIAGNOSTICA TEMPORANEA: componenti connesse del grafo grezzo (senza barriere), per capire se la rete arriva gia' spezzata in piu' pezzi.
-    const rawComponents = getAllComponentsOnGraph(roadGraph)
-    console.log(`[DIAG] Componenti connesse nel grafo grezzo: ${rawComponents.length}`)
-    console.log(
-      '[DIAG] Dimensioni componenti (numero di nodi), ordinate decrescenti:',
-      rawComponents.map((c) => c.size).sort((a, b) => b - a)
-    )
 
     isLoading.value = false
     emit('ready')

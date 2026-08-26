@@ -8,8 +8,78 @@ export interface RoadGraph {
   features: RoadFeature[]
 }
 
-function nodeKey(x: number, y: number): string {
+// Tolleranza di snap dei nodi: estremi di segmenti entro questa distanza condividono la stessa chiave di nodo.
+const NODE_SNAP_TOLERANCE_METERS = 1.5
+// Latitudine di riferimento (Valle d'Aosta) per la conversione gradi→metri con proiezione equirettangolare locale.
+const REFERENCE_LATITUDE_DEG = 45.7
+const METERS_PER_DEGREE_LAT = 111320
+const METERS_PER_DEGREE_LON = METERS_PER_DEGREE_LAT * Math.cos((REFERENCE_LATITUDE_DEG * Math.PI) / 180)
+const SNAP_CELL_SIZE_LAT_DEG = NODE_SNAP_TOLERANCE_METERS / METERS_PER_DEGREE_LAT
+const SNAP_CELL_SIZE_LON_DEG = NODE_SNAP_TOLERANCE_METERS / METERS_PER_DEGREE_LON
+
+interface SnapGridPoint { x: number; y: number; key: string }
+
+// Griglia hash (bucket per cella di tolleranza) e cache raw->chiave, per evitare confronti O(n^2) tra migliaia di nodi.
+const snapGrid = new Map<string, SnapGridPoint[]>()
+const rawToSnappedKey = new Map<string, string>()
+
+function rawCoordKey(x: number, y: number): string {
   return x.toFixed(6) + ',' + y.toFixed(6)
+}
+
+function distanceMeters(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = (x2 - x1) * METERS_PER_DEGREE_LON
+  const dy = (y2 - y1) * METERS_PER_DEGREE_LAT
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+function snapCellOf(x: number, y: number): [number, number] {
+  return [Math.floor(x / SNAP_CELL_SIZE_LON_DEG), Math.floor(y / SNAP_CELL_SIZE_LAT_DEG)]
+}
+
+function snapCellKey(cx: number, cy: number): string {
+  return cx + '_' + cy
+}
+
+function resetNodeSnapIndex(): void {
+  snapGrid.clear()
+  rawToSnappedKey.clear()
+}
+
+// Cerca tra i punti gia' registrati nelle celle vicine il piu' vicino entro tolleranza, altrimenti registra x,y come nuovo nodo.
+function snapNodeKey(x: number, y: number): string {
+  const rawKey = rawCoordKey(x, y)
+  const cached = rawToSnappedKey.get(rawKey)
+  if (cached) return cached
+
+  const [cx, cy] = snapCellOf(x, y)
+  let closest: SnapGridPoint | null = null
+  let closestDist = Infinity
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const bucket = snapGrid.get(snapCellKey(cx + dx, cy + dy))
+      if (!bucket) continue
+      for (const p of bucket) {
+        const d = distanceMeters(x, y, p.x, p.y)
+        if (d <= NODE_SNAP_TOLERANCE_METERS && d < closestDist) {
+          closest = p
+          closestDist = d
+        }
+      }
+    }
+  }
+
+  const snappedKey = closest ? closest.key : rawKey
+  rawToSnappedKey.set(rawKey, snappedKey)
+
+  const cell = snapCellKey(cx, cy)
+  const point: SnapGridPoint = { x, y, key: snappedKey }
+  const bucket = snapGrid.get(cell)
+  if (bucket) bucket.push(point)
+  else snapGrid.set(cell, [point])
+
+  return snappedKey
 }
 
 function addEdge(
@@ -93,6 +163,7 @@ async function fetchAllRoadFeatures(): Promise<RoadFeature[]> {
 }
 
 function buildGraphFromFeatures(features: RoadFeature[]): Map<string, Array<{ neighbor: string; oid: number }>> {
+  resetNodeSnapIndex()
   const graph = new Map<string, Array<{ neighbor: string; oid: number }>>()
 
   features.forEach((f) => {
@@ -104,7 +175,7 @@ function buildGraphFromFeatures(features: RoadFeature[]): Map<string, Array<{ ne
 
     const start = paths[0]
     const end = paths[paths.length - 1]
-    addEdge(graph, nodeKey(start[0], start[1]), nodeKey(end[0], end[1]), oid)
+    addEdge(graph, snapNodeKey(start[0], start[1]), snapNodeKey(end[0], end[1]), oid)
   })
 
   return graph
@@ -135,5 +206,5 @@ export async function loadRoadData(): Promise<RoadGraph> {
 }
 
 export function getNodeKey(x: number, y: number): string {
-  return nodeKey(x, y)
+  return snapNodeKey(x, y)
 }
