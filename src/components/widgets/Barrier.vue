@@ -9,6 +9,7 @@ import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtil
 import { loadRoadData, getNodeKey } from '../utils/roadDataLoader'
 import {
   analyzeDisconnection,
+  getAllComponentsOnGraph,
   type Crossing,
   type DisconnectionResult,
 } from '../utils/roadDisconnectionAnalyzer'
@@ -47,8 +48,7 @@ let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
 let roadGraph: Map<string, Array<{ neighbor: string; oid: number }>> | null = null
 let allFeatures: any[] = []
 let crossings: Crossing[] = []
-// Contatore progressivo per id/etichetta delle barriere: non si riassegna
-// mai, cosi' eliminare una barriera in mezzo alla lista non rinumera le altre.
+// Contatore progressivo per id/etichetta delle barriere: non si riassegna mai, cosi' eliminarne una in mezzo alla lista non rinumera le altre.
 let nextBarrierNumber = 1
 
 // Layers
@@ -64,10 +64,7 @@ function log(msg: string) {
   if (logMessages.value.length > 10) logMessages.value.pop()
 }
 
-// Il click (o il secondo click di un doppio click) che completa un
-// disegno/spostamento puo' cadere esattamente sulla barriera appena
-// creata/aggiornata: disabilitare temporaneamente updateOnGraphicClick evita
-// che riavvii subito un'altra sessione di update su quello stesso click.
+// Disabilita temporaneamente updateOnGraphicClick: il click che completa un disegno/spostamento puo' cadere sulla barriera appena creata e riavviare subito un'altra sessione di update.
 function suppressGraphicClickBriefly() {
   if (!sketchVM) return
   sketchVM.updateOnGraphicClick = false
@@ -76,11 +73,7 @@ function suppressGraphicClickBriefly() {
   }, SELECT_CLICK_COOLDOWN_MS)
 }
 
-// Esce da un'eventuale sessione di disegno/modifica ancora attiva. Va
-// chiamato prima di qualsiasi azione che muta i graphics dall'esterno
-// (Ripristina, eliminazione dalla lista, zoom su una barriera): farlo
-// mentre SketchViewModel sta ancora mostrando le maniglie di editing puo'
-// lasciare overlay non sincronizzati con lo stato/camera successivo.
+// Esce da un'eventuale sessione di disegno/modifica attiva prima di mutare i graphics dall'esterno, per non lasciare overlay disallineati con lo stato/camera successivo.
 function cancelActiveSketchSession() {
   sketchVM?.cancel()
   isDrawing.value = false
@@ -100,6 +93,14 @@ async function loadRoads() {
     statusText.value = `Grafo pronto: ${roadGraph.size} nodi, ${allFeatures.length} strade`
     log(`Grafo costruito: ${roadGraph.size} nodi`)
 
+    // DIAGNOSTICA TEMPORANEA: componenti connesse del grafo grezzo (senza barriere), per capire se la rete arriva gia' spezzata in piu' pezzi.
+    const rawComponents = getAllComponentsOnGraph(roadGraph)
+    console.log(`[DIAG] Componenti connesse nel grafo grezzo: ${rawComponents.length}`)
+    console.log(
+      '[DIAG] Dimensioni componenti (numero di nodi), ordinate decrescenti:',
+      rawComponents.map((c) => c.size).sort((a, b) => b - a)
+    )
+
     isLoading.value = false
     emit('ready')
   } catch (error) {
@@ -114,8 +115,7 @@ async function loadRoads() {
 function initializeLayers() {
   if (!props.view) return
 
-  // Crea le feature collection per la GeoJSONLayer delle strade
-  // Converte da paths format ArcGIS a GeoJSON coordinates
+  // Converte le features da formato paths ArcGIS a GeoJSON per la GeoJSONLayer delle strade.
   const roadsFeatureCollection = {
     type: 'FeatureCollection',
     features: allFeatures.map((f) => {
@@ -155,9 +155,7 @@ function initializeLayers() {
     },
   })
 
-  // elevationInfo 'on-the-ground' clampa la barriera al terreno: niente
-  // maniglia verticale per alzarla/abbassarla in 3D, l'altezza si regola
-  // sempre in automatico seguendo la superficie.
+  // elevationInfo 'on-the-ground' clampa la barriera al terreno: niente maniglia verticale in 3D, l'altezza segue sempre la superficie.
   sketchLayer = new GraphicsLayer({ title: 'Barriere', elevationInfo: { mode: 'on-the-ground' } as any })
   cutGraphicsLayer = new GraphicsLayer({ title: 'Strade tagliate' })
   cutMarkersLayer = new GraphicsLayer({ title: 'Punti di taglio' })
@@ -170,15 +168,9 @@ function initializeLayers() {
     sketchVM = new SketchViewModel({
       view: props.view,
       layer: sketchLayer,
-      // Selezionare una barriera esistente con un click la fa entrare in
-      // modalita' di modifica nativa Esri (reshape/move + icona di eliminazione),
-      // senza bisogno di un hit-test/listener di click custom.
+      // Click su barriera esistente attiva editing nativo Esri (reshape/move + eliminazione), senza hit-test/listener custom.
       updateOnGraphicClick: true,
-      // reshape permette di spostare i due punti esistenti. reshapeOptions e'
-      // documentato come "only supported in 3D, partially in 2D": impostarlo
-      // anche in 2D puo' rompere il semplice spostamento dei vertici, quindi
-      // si applica solo in vista 3D, dove serve per impedire di aggiungere
-      // altri punti trascinando il segmento.
+      // reshapeOptions e' "only supported in 3D, partially in 2D": applicarlo anche in 2D romperebbe il semplice spostamento dei vertici.
       defaultUpdateOptions: (props.view?.type === '3d'
         ? { tool: 'reshape', reshapeOptions: { edgeOperation: 'none', vertexOperation: 'move' } }
         : { tool: 'reshape' }) as any,
@@ -187,17 +179,14 @@ function initializeLayers() {
 
     sketchVM.on('create', (event: any) => {
       if (event.state === 'active' && event.toolEventInfo?.type === 'vertex-add') {
-        // La barriera e' sempre un segmento semplice: appena viene
-        // posizionato il secondo punto, chiude automaticamente il disegno
-        // senza richiedere un doppio click e senza permettere altri vertici.
+        // Barriera sempre a due punti: chiude automaticamente il disegno appena posizionato il secondo vertice.
         const vertexCount = event.graphic?.geometry?.paths?.[0]?.length ?? 0
         if (vertexCount >= 2) {
           sketchVM?.complete()
         }
       } else if (event.state === 'complete') {
         isDrawing.value = false
-        // Id/etichetta assegnati qui, sul graphic stesso: sopravvivono a
-        // spostamenti/reshape e restano leggibili da rebuildCrossings.
+        // Id/etichetta assegnati sul graphic stesso: sopravvivono a spostamenti/reshape e restano leggibili da rebuildCrossings.
         if (event.graphic) {
           const n = nextBarrierNumber++
           event.graphic.attributes = { barrierId: `barrier-${n}`, barrierLabel: `Barriera ${n}` }
@@ -233,8 +222,7 @@ function initializeLayers() {
         await props.view.goTo(roadsLayer.fullExtent)
       }
     } catch (err: any) {
-      // goTo si interrompe normalmente se una nuova navigazione lo sostituisce
-      // (es. l'utente muove la mappa durante il caricamento): non è un errore.
+      // goTo si interrompe normalmente se una nuova navigazione lo sostituisce (es. l'utente muove la mappa): non è un errore.
       if (err?.name !== 'AbortError') {
         console.warn('goTo error:', err)
       }
@@ -253,12 +241,7 @@ function touchesNodeKey(polyline: any, targetKey: string): boolean {
   return firstKey === targetKey || lastKey === targetKey
 }
 
-// Ricostruisce da zero l'intero array `crossings` a partire da TUTTE le
-// geometrie attualmente presenti in sketchLayer (non solo l'ultima disegnata),
-// cosi' che spostare o eliminare una barriera si rifletta correttamente
-// sull'analisi. Riusa la stessa logica di taglio geometrico gia' esistente,
-// applicata in sequenza per ciascuna barriera (una strada viene tagliata dalla
-// prima barriera che la interseca, coerente col comportamento precedente).
+// Ricostruisce da zero `crossings` da TUTTE le geometrie in sketchLayer, cosi' spostare/eliminare una barriera si riflette correttamente sull'analisi.
 function rebuildCrossings(): void {
   crossings = []
   crossingsCount.value = 0
@@ -310,9 +293,7 @@ function rebuildCrossings(): void {
       if (!partStart) partStart = parts[0]
       if (!partEnd) partEnd = parts[parts.length - 1]
 
-      // Spostando una barriera il taglio puo' cadere molto vicino a un nodo
-      // stradale e produrre un pezzo degenere (senza vertici): scartalo
-      // invece di crashare leggendo un punto inesistente.
+      // Taglio vicino a un nodo puo' produrre un pezzo degenere senza vertici: scartalo invece di crashare.
       const startPath = (partStart as any)?.paths?.[0]
       const endPath = (partEnd as any)?.paths?.[0]
       if (!startPath?.length || !endPath?.length) {
@@ -344,9 +325,7 @@ function rebuildCrossings(): void {
   })
 }
 
-// Punto d'ingresso comune per creazione, spostamento ed eliminazione di una
-// barriera: ricostruisce l'analisi da zero sullo stato attuale delle barriere
-// e aggiorna la UI di conseguenza.
+// Punto d'ingresso comune per creazione/spostamento/eliminazione barriera: ricalcola l'analisi e aggiorna la UI.
 function recomputeAndApply(actionMessage: string) {
   log(actionMessage)
   rebuildCrossings()
@@ -360,9 +339,7 @@ function recomputeAndApply(actionMessage: string) {
   if (result) barriers.value = buildBarrierSummaries(result)
 }
 
-// Ricava i dati per-barriera (strade tagliate/isolate) dal risultato
-// dell'analisi, nell'ordine in cui le barriere compaiono in sketchLayer
-// (che coincide con l'ordine di creazione, non riassegnato alle eliminazioni).
+// Dati per-barriera nell'ordine di sketchLayer (ordine di creazione, non riassegnato alle eliminazioni).
 function buildBarrierSummaries(result: DisconnectionResult): BarrierSummary[] {
   if (!sketchLayer) return []
 
@@ -395,23 +372,13 @@ function zoomToBarrier(barrierId: string) {
   const extent = graphic?.geometry?.extent
   if (!extent) return
 
-  // Uscire prima da un'eventuale sessione di modifica attiva: spostare la
-  // camera mentre SketchViewModel sta ancora mostrando le maniglie di editing
-  // su un grafico puo' lasciare l'overlay di editing disallineato rispetto
-  // alla nuova posizione della camera (visivamente incoerente finche' non si
-  // interagisce di nuovo con la mappa).
+  // Esce prima da un'eventuale sessione di editing attiva, per non lasciare l'overlay disallineato rispetto alla nuova posizione della camera.
   cancelActiveSketchSession()
 
-  // goTo su un'extent (fit automatico) puo' comportarsi in modo imprevedibile
-  // per un target piccolo come un segmento breve, soprattutto in vista 3D
-  // (SceneView), dove puo' risultare in uno zoom-out eccessivo invece che un
-  // avvicinamento. Calcoliamo quindi noi una scala esplicita da un'estensione
-  // con un margine minimo garantito, che si comporta in modo prevedibile
-  // tanto in 2D quanto in 3D.
+  // Scala esplicita invece di goTo su extent: piu' prevedibile per target piccoli (segmenti brevi), specie in 3D dove goTo puo' fare uno zoom-out eccessivo.
   const MIN_SPAN_METERS = 300
   const span = Math.max(extent.width, extent.height, MIN_SPAN_METERS) * 4
-  // Fattore empirico: una vista di "span" metri di lato occupa circa
-  // l'intera larghezza della mappa a questa scala (~ metri per pixel * larghezza tipica).
+  // Fattore empirico: uno "span" di N metri occupa circa l'intera larghezza mappa a questa scala.
   const scale = span * 12
 
   props.view.goTo({ target: extent.center, scale }).catch((err: any) => {
@@ -419,11 +386,7 @@ function zoomToBarrier(barrierId: string) {
   })
 }
 
-// Elimina una singola barriera dalla lista (senza passare dall'icona nativa
-// Esri sulla mappa). Esce prima da un'eventuale sessione di modifica attiva
-// (anche su un'altra barriera) per evitare di alterare i graphics mentre
-// SketchViewModel ha ancora un'operazione in corso, poi ricalcola l'analisi
-// esattamente come dopo un'eliminazione via mappa.
+// Elimina una barriera dalla lista (senza l'icona nativa Esri): esce da editing attivo, poi ricalcola come dopo un'eliminazione via mappa.
 function deleteBarrier(barrierId: string) {
   if (!sketchLayer) return
 
@@ -533,10 +496,7 @@ function startDrawing() {
   isDrawing.value = true
 }
 
-// Stato "pulito" equivalente a dopo un Ripristina: usato sia dal bottone
-// "Ripristina" (che in aggiunta svuota anche sketchLayer e il log) sia in
-// automatico quando l'eliminazione dell'ultima barriera rimasta lascia
-// sketchLayer vuoto.
+// Stato pulito equivalente a dopo un Ripristina, riusato anche quando l'eliminazione dell'ultima barriera svuota sketchLayer.
 function applyCleanState() {
   cutGraphicsLayer?.removeAll()
   cutMarkersLayer?.removeAll()

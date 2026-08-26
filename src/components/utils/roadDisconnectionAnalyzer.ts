@@ -13,9 +13,7 @@ export interface DisconnectionResult {
   disconnectedOids: number[]
   disconnectedCutSides: Map<number, 'A' | 'B' | 'both'>
   blockedOids: number[]
-  // Attribuzione per-barriera degli oid isolati: oid -> barrierId "proprietario".
-  // Vedi il commento sopra il suo calcolo per la convenzione usata quando una
-  // tasca isolata e' delimitata da piu' barriere contemporaneamente.
+  // Attribuzione per-barriera degli oid isolati: oid -> barrierId "proprietario" (vedi calcolo sotto).
   disconnectedOidBarrier: Map<number, string>
 }
 
@@ -66,7 +64,7 @@ function getReachableOnGraph(g: RoadGraph, startNode: string): Set<string> {
   return visited
 }
 
-function getAllComponentsOnGraph(g: RoadGraph): Set<string>[] {
+export function getAllComponentsOnGraph(g: RoadGraph): Set<string>[] {
   const visited = new Set<string>()
   const components: Set<string>[] = []
 
@@ -121,9 +119,7 @@ export function analyzeDisconnection(
 
   const disconnectedOids = new Set<number>()
   const disconnectedComponents: Set<string>[] = []
-  // oid isolati introdotti da ciascuna componente disconnessa, in parallelo
-  // con disconnectedComponents (stesso indice) — serve per l'attribuzione
-  // per-barriera piu' sotto.
+  // oid isolati introdotti da ciascuna componente disconnessa (stesso indice di disconnectedComponents), per l'attribuzione per-barriera.
   const disconnectedComponentOids: Set<number>[] = []
 
   for (const comps of groups.values()) {
@@ -157,15 +153,7 @@ export function analyzeDisconnection(
     else if (bDisconnected) disconnectedCutSides.set(oid, 'B')
   })
 
-  // Attribuzione per-barriera degli oid isolati: ogni componente disconnessa
-  // (tasca di strade isolate) viene attribuita interamente a UNA sola
-  // barriera — per convenzione quella il cui crossing (cutNodeA o cutNodeB)
-  // delimita la componente e appare per primo nell'array `crossings`, cioe'
-  // la prima barriera disegnata tra quelle coinvolte. Se una tasca e'
-  // delimitata da piu' barriere contemporaneamente (isolamento combinato),
-  // viene comunque assegnata a una sola di esse con questa regola: cosi' ogni
-  // oid isolato ha esattamente un proprietario e la somma dei conteggi
-  // per-barriera coincide sempre col totale disconnectedOids.
+  // Ogni componente disconnessa viene attribuita interamente a una sola barriera (la prima in `crossings` che la delimita), cosi' ogni oid isolato ha un proprietario univoco.
   const disconnectedOidBarrier = new Map<number, string>()
 
   disconnectedComponents.forEach((comp, i) => {
