@@ -93,9 +93,7 @@ async function loadRoads() {
     loadError.value = null
     statusText.value = 'Caricamento dati strade...'
 
-    const basePath = import.meta.env.BASE_URL || '/'
-    const roadsPath = `${basePath}data/roads.json`
-    const roadData = await loadRoadData(roadsPath)
+    const roadData = await loadRoadData()
     roadGraph = roadData.nodeMap
     allFeatures = roadData.features
 

@@ -24,50 +24,72 @@ function addEdge(
   g.get(b)!.push({ neighbor: a, oid })
 }
 
-function convertGeoJSONToArcGIS(geojsonFeature: any): RoadFeature | null {
+const ROAD_SERVICE_QUERY_URL =
+  'https://portalgis.wheretech.it/server/rest/services/INVA/INVA_Network/MapServer/8/query'
+const PAGE_SIZE = 2000
+
+function isValidRoadFeature(f: any): f is RoadFeature {
+  return !!f
+    && typeof f.attributes?.OBJECTID === 'number'
+    && Array.isArray(f.geometry?.paths)
+    && Array.isArray(f.geometry.paths[0])
+}
+
+async function fetchRoadPage(resultOffset: number): Promise<{ features: RoadFeature[]; exceededTransferLimit: boolean }> {
+  const params = new URLSearchParams({
+    where: '1=1',
+    outFields: '*',
+    returnGeometry: 'true',
+    outSR: '4326',
+    f: 'json',
+    resultOffset: String(resultOffset),
+    resultRecordCount: String(PAGE_SIZE),
+  })
+
+  let response: Response
   try {
-    // Get properties and convert to attributes
-    const attributes = {
-      OBJECTID: geojsonFeature.properties?.OBJECTID || geojsonFeature.id || 0,
-      ...geojsonFeature.properties,
-    }
-
-    if (!attributes.OBJECTID) {
-      console.warn('Feature missing OBJECTID:', geojsonFeature)
-      return null
-    }
-
-    // Convert GeoJSON geometry to ArcGIS format
-    const geom = geojsonFeature.geometry
-    if (!geom || !geom.coordinates) {
-      console.warn('Feature missing geometry:', geojsonFeature)
-      return null
-    }
-
-    let paths: number[][][] = []
-
-    if (geom.type === 'LineString') {
-      // LineString: coordinates is [lon, lat][]
-      paths = [geom.coordinates as number[][]]
-    } else if (geom.type === 'MultiLineString') {
-      // MultiLineString: coordinates is [lon, lat][][]
-      paths = geom.coordinates as number[][][]
-    } else if (geom.type === 'Polygon') {
-      // Polygon: coordinates is [lon, lat][][]
-      paths = geom.coordinates as number[][][]
-    } else {
-      console.warn('Unsupported geometry type:', geom.type)
-      return null
-    }
-
-    return {
-      attributes,
-      geometry: { paths },
-    }
-  } catch (error) {
-    console.warn('Error converting feature:', error, geojsonFeature)
-    return null
+    response = await fetch(`${ROAD_SERVICE_QUERY_URL}?${params.toString()}`)
+  } catch (err) {
+    throw new Error(
+      'Impossibile raggiungere il servizio stradale del portale GIS (portalgis.wheretech.it). '
+      + 'Verifica la connessione o riprova più tardi.'
+    )
   }
+
+  if (!response.ok) {
+    throw new Error(
+      `Impossibile raggiungere il servizio stradale del portale GIS (portalgis.wheretech.it). `
+      + `Il servizio ha risposto con stato ${response.status}.`
+    )
+  }
+
+  const payload = await response.json()
+
+  if (payload.error) {
+    throw new Error(
+      `Il servizio stradale del portale GIS (portalgis.wheretech.it) ha restituito un errore: `
+      + `${payload.error.message ?? 'errore sconosciuto'}`
+    )
+  }
+
+  const features: RoadFeature[] = (payload.features ?? []).filter(isValidRoadFeature)
+
+  return { features, exceededTransferLimit: payload.exceededTransferLimit === true }
+}
+
+async function fetchAllRoadFeatures(): Promise<RoadFeature[]> {
+  const allFeatures: RoadFeature[] = []
+  let offset = 0
+
+  while (true) {
+    const { features, exceededTransferLimit } = await fetchRoadPage(offset)
+    allFeatures.push(...features)
+
+    if (!exceededTransferLimit) break
+    offset += PAGE_SIZE
+  }
+
+  return allFeatures
 }
 
 function buildGraphFromFeatures(features: RoadFeature[]): Map<string, Array<{ neighbor: string; oid: number }>> {
@@ -88,32 +110,26 @@ function buildGraphFromFeatures(features: RoadFeature[]): Map<string, Array<{ ne
   return graph
 }
 
-export async function loadRoadData(jsonPath: string): Promise<RoadGraph> {
+export async function loadRoadData(): Promise<RoadGraph> {
   try {
-    const response = await fetch(jsonPath)
-    if (!response.ok) throw new Error(`Failed to fetch roads: ${response.status}`)
-
-    const geojson = await response.json()
-    const rawFeatures = geojson.features || []
-
-    if (rawFeatures.length === 0) {
-      throw new Error('No features found in GeoJSON')
-    }
-
-    // Convert GeoJSON features to ArcGIS format
-    const features: RoadFeature[] = rawFeatures
-      .map((f: any) => convertGeoJSONToArcGIS(f))
-      .filter((f: RoadFeature | null): f is RoadFeature => f !== null)
+    const features = await fetchAllRoadFeatures()
 
     if (features.length === 0) {
-      throw new Error('No valid features could be converted from GeoJSON')
+      throw new Error(
+        'Il servizio stradale del portale GIS (portalgis.wheretech.it) non ha restituito alcuna strada.'
+      )
     }
 
     const nodeMap = buildGraphFromFeatures(features)
 
     return { nodeMap, features }
   } catch (error) {
-    console.error('Error loading road data:', error)
+    console.error(
+      'Error loading road data. Se l\'errore riportato dal browser menziona CORS/Cross-Origin, '
+      + 'occorre abilitare CORS per questa origine sul portale GIS (configurazione lato server, '
+      + 'non risolvibile dal codice del progetto):',
+      error
+    )
     throw error
   }
 }
