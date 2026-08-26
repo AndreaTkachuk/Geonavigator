@@ -6,12 +6,12 @@ import GeoJSONLayer from '@arcgis/core/layers/GeoJSONLayer'
 import Graphic from '@arcgis/core/Graphic'
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine'
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils'
-import { loadRoadData, getNodeKey } from '../utils/roadDataLoader'
+import { loadRoadData, getNodeKey } from '../../utils/roadDataLoader'
 import {
   analyzeDisconnection,
   type Crossing,
   type DisconnectionResult,
-} from '../utils/roadDisconnectionAnalyzer'
+} from '../../utils/roadDisconnectionAnalyzer'
 
 interface BarrierSummary {
   id: string
@@ -563,73 +563,65 @@ onUnmounted(() => {
     <div v-else class="widget-content">
       <div class="widget-status">
         <p class="status-text">{{ statusText }}</p>
-        <div v-if="blockedCount > 0 || disconnectedCount > 0" class="stats">
-          <div v-if="blockedCount > 0" class="stat-card blocked">
-            <i class="mdi mdi-close-octagon-outline stat-icon" />
-            <div class="stat-body">
-              <span class="stat-value">{{ blockedCount }}</span>
-              <span class="stat-label">tagliata/e</span>
-            </div>
-          </div>
-          <div v-if="disconnectedCount > 0" class="stat-card disconnected">
-            <i class="mdi mdi-map-marker-off-outline stat-icon" />
-            <div class="stat-body">
-              <span class="stat-value">{{ disconnectedCount }}</span>
-              <span class="stat-label">isolate</span>
-            </div>
-          </div>
+        <div v-if="blockedCount > 0 || disconnectedCount > 0" class="d-flex gap-2 flex-wrap">
+          <span v-if="blockedCount > 0" class="badge badge-outline-primary">
+            <i class="mdi mdi-close-octagon-outline me-1" />{{ blockedCount }} tagliata/e
+          </span>
+          <span v-if="disconnectedCount > 0" class="badge badge-outline-danger">
+            <i class="mdi mdi-map-marker-off-outline me-1" />{{ disconnectedCount }} isolate
+          </span>
         </div>
       </div>
 
-      <div class="widget-controls">
+      <div class="widget-controls d-flex gap-2">
         <button
-          class="btn btn-primary"
+          class="btn btn-sm btn-primary flex-fill text-nowrap"
           type="button"
           :disabled="!isSketchReady || isEditingBarrier"
           @click="startDrawing"
         >
-          <i class="mdi" :class="isDrawing ? 'mdi-close' : 'mdi-pencil'" />
+          <i class="mdi me-2" :class="isDrawing ? 'mdi-close' : 'mdi-pencil'" />
           {{ isDrawing ? 'Annulla disegno' : 'Aggiungi barriera' }}
         </button>
         <button
-          class="btn btn-secondary"
+          class="btn btn-sm flex-fill text-nowrap"
+          :class="isResetConfirming ? 'btn-warning' : 'btn-outline-secondary'"
           type="button"
-          :class="{ 'btn-warning': isResetConfirming }"
           :disabled="crossingsCount === 0"
           @click="resetAnalysis"
         >
-          <i class="mdi" :class="isResetConfirming ? 'mdi-alert-outline' : 'mdi-refresh'" />
+          <i class="mdi me-2" :class="isResetConfirming ? 'mdi-alert-outline' : 'mdi-refresh'" />
           {{ isResetConfirming ? 'Conferma ripristino?' : 'Ripristina' }}
         </button>
       </div>
 
-      <div v-if="!isSketchReady" class="sketch-ready-hint">
+      <div v-if="!isSketchReady" class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center gap-2">
         <span class="mini-spinner" />
         Preparazione strumenti di disegno...
       </div>
-      <div v-else-if="isEditingBarrier" class="sketch-ready-hint">
+      <div v-else-if="isEditingBarrier" class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center gap-2">
         <span class="mini-spinner" />
         Modifica barriera in corso...
       </div>
 
       <!-- Lista barriere -->
-      <div v-if="barriers.length > 0" class="barrier-list">
-        <div class="widget-log-title">
-          <i class="mdi mdi-format-list-bulleted" />
+      <div v-if="barriers.length > 0" class="card barrier-list">
+        <div class="card-header">
+          <i class="mdi mdi-format-list-bulleted me-2" />
           Lista barriere
         </div>
-        <div class="barrier-rows">
-          <div v-for="b in barriers" :key="b.id" class="barrier-row">
-            <span class="barrier-row-label">{{ b.label }}</span>
-            <span class="barrier-row-metric cut">
+        <ul class="list-group list-group-flush">
+          <li v-for="b in barriers" :key="b.id" class="list-group-item d-flex align-items-center gap-2">
+            <span class="text-truncate flex-grow-1">{{ b.label }}</span>
+            <span class="barrier-row-metric text-primary">
               <i class="mdi mdi-close-octagon-outline" />{{ b.cutCount }}
             </span>
-            <span class="barrier-row-metric isolated">
+            <span class="barrier-row-metric text-danger">
               <i class="mdi mdi-map-marker-off-outline" />{{ b.isolatedCount }}
             </span>
             <button
               type="button"
-              class="barrier-zoom-btn"
+              class="btn btn-outline-secondary btn-sm"
               :aria-label="'Zoom su ' + b.label"
               @click="zoomToBarrier(b.id)"
             >
@@ -637,42 +629,42 @@ onUnmounted(() => {
             </button>
             <button
               type="button"
-              class="barrier-zoom-btn barrier-delete-btn"
+              class="btn btn-outline-danger btn-sm"
               :aria-label="'Elimina ' + b.label"
               @click="deleteBarrier(b.id)"
             >
               <i class="mdi mdi-trash-can-outline" />
             </button>
-          </div>
-          <div class="barrier-row barrier-row-total">
-            <span class="barrier-row-label">Totale</span>
-            <span class="barrier-row-metric cut">
+          </li>
+          <li class="list-group-item list-group-item-primary fw-bold d-flex align-items-center gap-2">
+            <span class="flex-grow-1">Totale</span>
+            <span class="barrier-row-metric text-primary">
               <i class="mdi mdi-close-octagon-outline" />{{ blockedCount }}
             </span>
-            <span class="barrier-row-metric isolated">
+            <span class="barrier-row-metric text-danger">
               <i class="mdi mdi-map-marker-off-outline" />{{ disconnectedCount }}
             </span>
             <span class="barrier-zoom-btn-spacer" />
             <span class="barrier-zoom-btn-spacer" />
-          </div>
-        </div>
+          </li>
+        </ul>
       </div>
-      <p v-else class="barrier-list-empty">
-        <i class="mdi mdi-information-outline" />
+      <p v-else class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center gap-2">
+        <i class="mdi mdi-information-outline me-1" />
         Nessuna barriera disegnata
       </p>
 
       <!-- Log Messages -->
-      <div v-if="logMessages.length > 0" class="widget-log">
-        <div class="widget-log-title">
-          <i class="mdi mdi-text-box-outline" />
+      <div v-if="logMessages.length > 0" class="card widget-log">
+        <div class="card-header">
+          <i class="mdi mdi-text-box-outline me-2" />
           Registro operazioni
         </div>
-        <div class="log-entries">
-          <div v-for="(msg, idx) in logMessages" :key="idx" class="log-entry">
+        <ul class="list-group list-group-flush log-entries">
+          <li v-for="(msg, idx) in logMessages" :key="idx" class="list-group-item log-entry">
             {{ msg }}
-          </div>
-        </div>
+          </li>
+        </ul>
       </div>
     </div>
   </div>
