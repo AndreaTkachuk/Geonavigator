@@ -13,7 +13,7 @@ import '@arcgis/map-components/dist/components/arcgis-zoom'
 import { useAppStore } from '../../stores/app.store'
 import '@arcgis/map-components/dist/components/arcgis-basemap-gallery'
 import '@arcgis/map-components/dist/components/arcgis-expand'
-import Barrier from '../../components/widgets/Barrier.vue'
+import Barrier from '../../components/widgets/Barrier/Barrier.vue'
 
 const props = defineProps<{
   mapType: '2D' | '3D' | null
