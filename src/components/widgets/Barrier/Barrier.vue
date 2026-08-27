@@ -63,6 +63,10 @@ function log(msg: string) {
   if (logMessages.value.length > 10) logMessages.value.pop()
 }
 
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural
+}
+
 // Disabilita temporaneamente updateOnGraphicClick: il click che completa un disegno/spostamento puo' cadere sulla barriera appena creata e riavviare subito un'altra sessione di update.
 function suppressGraphicClickBriefly() {
   if (!sketchVM) return
@@ -415,9 +419,11 @@ function updateHighlight(): DisconnectionResult | undefined {
 
   blockedCount.value = blockedOids.length
   disconnectedCount.value = disconnectedOids.length
-  statusText.value = `${blockedOids.length} strada/e tagliata/e: ${disconnectedOids.length} strade disconnesse`
+  const cutPhrase = pluralize(blockedOids.length, 'strada tagliata', 'strade tagliate')
+  const disconnectedPhrase = pluralize(disconnectedOids.length, 'strada disconnessa', 'strade disconnesse')
+  statusText.value = `${blockedOids.length} ${cutPhrase}: ${disconnectedOids.length} ${disconnectedPhrase}`
 
-  log(`Analisi: ${blockedOids.length} tagliate, ${disconnectedOids.length} isolate`)
+  log(`Analisi: ${blockedOids.length} ${pluralize(blockedOids.length, 'tagliata', 'tagliate')}, ${disconnectedOids.length} ${pluralize(disconnectedOids.length, 'isolata', 'isolate')}`)
 
   // Ridisegna i pezzi isolati in rosso
   cutGraphicsLayer?.removeAll()
@@ -582,10 +588,10 @@ onUnmounted(() => {
         <p class="status-text">{{ statusText }}</p>
         <div v-if="blockedCount > 0 || disconnectedCount > 0" class="d-flex gap-2 flex-wrap">
           <span v-if="blockedCount > 0" class="badge badge-outline-primary">
-            <i class="mdi mdi-close-octagon-outline me-1" />{{ blockedCount }} tagliata/e
+            <i class="mdi mdi-close-octagon-outline me-1" />{{ blockedCount }} {{ pluralize(blockedCount, 'tagliata', 'tagliate') }}
           </span>
           <span v-if="disconnectedCount > 0" class="badge badge-outline-danger">
-            <i class="mdi mdi-map-marker-off-outline me-1" />{{ disconnectedCount }} isolate
+            <i class="mdi mdi-map-marker-off-outline me-1" />{{ disconnectedCount }} {{ pluralize(disconnectedCount, 'isolata', 'isolate') }}
           </span>
         </div>
       </div>
