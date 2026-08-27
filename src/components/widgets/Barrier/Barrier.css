@@ -67,6 +67,17 @@
   color: var(--text-strong);
 }
 
+.barrier-widget .alert {
+  padding-left: 0.75rem;
+  background-image: none;
+}
+
+.barrier-widget .card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
 .mini-spinner {
   display: inline-block;
   width: 12px;
