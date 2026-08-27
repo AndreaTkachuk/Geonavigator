@@ -87,6 +87,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+.barrier-action-btn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+
 .barrier-zoom-btn-spacer {
   flex: 0 0 auto;
   width: 26px;

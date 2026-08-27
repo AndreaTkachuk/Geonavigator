@@ -621,7 +621,7 @@ onUnmounted(() => {
             </span>
             <button
               type="button"
-              class="btn btn-outline-secondary btn-sm"
+              class="btn btn-outline-secondary barrier-action-btn"
               :aria-label="'Zoom su ' + b.label"
               @click="zoomToBarrier(b.id)"
             >
@@ -629,7 +629,7 @@ onUnmounted(() => {
             </button>
             <button
               type="button"
-              class="btn btn-outline-danger btn-sm"
+              class="btn btn-outline-danger barrier-action-btn"
               :aria-label="'Elimina ' + b.label"
               @click="deleteBarrier(b.id)"
             >
