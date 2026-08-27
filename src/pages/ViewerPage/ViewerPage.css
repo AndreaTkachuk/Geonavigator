@@ -29,10 +29,11 @@
   min-width: 0;
 }
 
-.brand-logo {
-  height: 60px;
-  width: auto;
-  object-fit: contain;
+.brand-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  white-space: nowrap;
 }
 
 .demo-badge {
@@ -71,8 +72,8 @@
 }
 
 .dim-toggle {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.8);
+  border: none;
   color: #0066cc;
   font-weight: 600;
 }
