@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel'
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer'
 import GeoJSONLayer from '@arcgis/core/layers/GeoJSONLayer'
@@ -103,6 +103,59 @@ async function loadRoads() {
   }
 }
 
+function createSketchViewModel(): SketchViewModel {
+  const vm = new SketchViewModel({
+    view: props.view,
+    layer: sketchLayer,
+    // Click su barriera esistente attiva editing nativo Esri (reshape/move + eliminazione), senza hit-test/listener custom.
+    updateOnGraphicClick: true,
+    // reshapeOptions e' "only supported in 3D, partially in 2D": applicarlo anche in 2D romperebbe il semplice spostamento dei vertici.
+    defaultUpdateOptions: (props.view?.type === '3d'
+      ? { tool: 'reshape', reshapeOptions: { edgeOperation: 'none', vertexOperation: 'move' } }
+      : { tool: 'reshape' }) as any,
+    polylineSymbol: { type: 'simple-line' as const, color: [255, 165, 0], width: 3, style: 'dash' as const } as any,
+  })
+
+  vm.on('create', (event: any) => {
+    if (event.state === 'active' && event.toolEventInfo?.type === 'vertex-add') {
+      // Barriera sempre a due punti: chiude automaticamente il disegno appena posizionato il secondo vertice.
+      const vertexCount = event.graphic?.geometry?.paths?.[0]?.length ?? 0
+      if (vertexCount >= 2) {
+        sketchVM?.complete()
+      }
+    } else if (event.state === 'complete') {
+      isDrawing.value = false
+      // Id/etichetta assegnati sul graphic stesso: sopravvivono a spostamenti/reshape e restano leggibili da rebuildCrossings.
+      if (event.graphic) {
+        const n = nextBarrierNumber++
+        event.graphic.attributes = { barrierId: `barrier-${n}`, barrierLabel: `Barriera ${n}` }
+      }
+      suppressGraphicClickBriefly()
+      recomputeAndApply('Barriera disegnata: ricalcolo...')
+    } else if (event.state === 'cancel') {
+      isDrawing.value = false
+    }
+  })
+
+  vm.on('update', (event) => {
+    if (event.state === 'start' || event.state === 'active') {
+      isEditingBarrier.value = true
+    } else if (event.state === 'complete') {
+      isEditingBarrier.value = false
+      suppressGraphicClickBriefly()
+      recomputeAndApply('Barriera spostata: ricalcolo...')
+    }
+  })
+
+  vm.on('delete', () => {
+    isEditingBarrier.value = false
+    suppressGraphicClickBriefly()
+    recomputeAndApply('Barriera eliminata: ricalcolo...')
+  })
+
+  return vm
+}
+
 function initializeLayers() {
   if (!props.view) return
 
@@ -155,56 +208,7 @@ function initializeLayers() {
 
   // Aspetta che il layer sia caricato
   roadsLayer.load().then(async () => {
-    // Setup sketch view model
-    sketchVM = new SketchViewModel({
-      view: props.view,
-      layer: sketchLayer,
-      // Click su barriera esistente attiva editing nativo Esri (reshape/move + eliminazione), senza hit-test/listener custom.
-      updateOnGraphicClick: true,
-      // reshapeOptions e' "only supported in 3D, partially in 2D": applicarlo anche in 2D romperebbe il semplice spostamento dei vertici.
-      defaultUpdateOptions: (props.view?.type === '3d'
-        ? { tool: 'reshape', reshapeOptions: { edgeOperation: 'none', vertexOperation: 'move' } }
-        : { tool: 'reshape' }) as any,
-      polylineSymbol: { type: 'simple-line' as const, color: [255, 165, 0], width: 3, style: 'dash' as const } as any,
-    })
-
-    sketchVM.on('create', (event: any) => {
-      if (event.state === 'active' && event.toolEventInfo?.type === 'vertex-add') {
-        // Barriera sempre a due punti: chiude automaticamente il disegno appena posizionato il secondo vertice.
-        const vertexCount = event.graphic?.geometry?.paths?.[0]?.length ?? 0
-        if (vertexCount >= 2) {
-          sketchVM?.complete()
-        }
-      } else if (event.state === 'complete') {
-        isDrawing.value = false
-        // Id/etichetta assegnati sul graphic stesso: sopravvivono a spostamenti/reshape e restano leggibili da rebuildCrossings.
-        if (event.graphic) {
-          const n = nextBarrierNumber++
-          event.graphic.attributes = { barrierId: `barrier-${n}`, barrierLabel: `Barriera ${n}` }
-        }
-        suppressGraphicClickBriefly()
-        recomputeAndApply('Barriera disegnata: ricalcolo...')
-      } else if (event.state === 'cancel') {
-        isDrawing.value = false
-      }
-    })
-
-    sketchVM.on('update', (event) => {
-      if (event.state === 'start' || event.state === 'active') {
-        isEditingBarrier.value = true
-      } else if (event.state === 'complete') {
-        isEditingBarrier.value = false
-        suppressGraphicClickBriefly()
-        recomputeAndApply('Barriera spostata: ricalcolo...')
-      }
-    })
-
-    sketchVM.on('delete', () => {
-      isEditingBarrier.value = false
-      suppressGraphicClickBriefly()
-      recomputeAndApply('Barriera eliminata: ricalcolo...')
-    })
-
+    sketchVM = createSketchViewModel()
     isSketchReady.value = true
 
     // Zoom to roads extent
@@ -223,6 +227,19 @@ function initializeLayers() {
     loadError.value = `Errore caricamento strade: ${err.message}`
   })
 }
+
+// Al cambio 2D/3D props.view punta a una mappa nuova: riaggancia gli stessi layer (dati/barriere gia' presenti) invece di ricrearli.
+watch(() => props.view, (newView) => {
+  if (!newView || !roadsLayer || !sketchLayer || !cutGraphicsLayer || !cutMarkersLayer) return
+
+  newView.map.addMany([roadsLayer, sketchLayer, cutGraphicsLayer, cutMarkersLayer])
+
+  sketchVM?.destroy()
+  sketchVM = createSketchViewModel()
+  isSketchReady.value = true
+
+  updateHighlight()
+})
 
 function touchesNodeKey(polyline: any, targetKey: string): boolean {
   if (!polyline || !polyline.paths || !polyline.paths[0]) return false
