@@ -13,17 +13,7 @@ import '@arcgis/map-components/dist/components/arcgis-zoom'
 import { useAppStore } from '../../stores/app.store'
 import '@arcgis/map-components/dist/components/arcgis-basemap-gallery'
 import '@arcgis/map-components/dist/components/arcgis-expand'
-import Barrier from '../../components/widgets/Barrier.vue'
-
-// Eagerly import all src/assets files so Vite bundles them with hashed URLs.
-// Config paths like "assets/vue.svg" are resolved by prepending "/src/".
-const _assetModules = import.meta.glob<string>('/src/assets/**/*', { eager: true, import: 'default' })
-
-function resolveAssetUrl(url: string | undefined): string {
-  if (!url) return ''
-  if (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:')) return url
-  return (_assetModules[`/src/${url}`] as string) ?? url
-}
+import Barrier from '../../components/widgets/Barrier/Barrier.vue'
 
 const props = defineProps<{
   mapType: '2D' | '3D' | null
@@ -35,6 +25,8 @@ const mapEl = ref<any>(null)
 const mapIsReady = ref(false)
 const mapView = ref<any>(null)
 const activeWidget = ref<string | null>(null)
+// Widget montati almeno una volta restano nel DOM (v-show) invece di essere distrutti, cosi' non perdono lo stato tra apertura/chiusura del pannello.
+const openedWidgetKeys = ref<string[]>([])
 
 function toggleDimension() {
   router.push({ name: is3D.value ? 'map2D' : 'map3D' })
@@ -46,6 +38,7 @@ function toggleWidget(key: string) {
     return
   }
   activeWidget.value = key
+  if (!openedWidgetKeys.value.includes(key)) openedWidgetKeys.value.push(key)
   if (!appStore.sidebarOpen) appStore.toggleSidebar()
 }
 
@@ -58,12 +51,6 @@ function panelStyle(item: SidebarItem): Record<string, string> {
 }
 
 const viewerConfig = computed(() => appStore.currentMapConfig)
-const pageTitle = computed(
-  () => appStore.config?.applicationSettings.titleApplication ?? 'Viewer geografico'
-)
-const logoUrl = computed(
-  () => resolveAssetUrl(appStore.config?.applicationSettings.logo?.light?.lg?.url)
-)
 const topMenuLinks = computed(
   () => appStore.config?.applicationSettings.topmenu?.links ?? []
 )
@@ -152,10 +139,7 @@ function createOsmBasemap(): Basemap {
 function resolveFallbackBasemap(): Basemap {
   const basemapId = viewerConfig.value?.settings?.basemap
   if (!basemapId || basemapId.toLowerCase() === 'osm') return createOsmBasemap()
-  // Legacy Esri basemap id, e.g. "hybrid" (imagery + labels), "satellite" (imagery only),
-  // "streets-vector", "topo-vector", "gray-vector", "dark-gray-vector", "oceans", "terrain".
-  // Note: new style-based ids ("arcgis-imagery", "arcgis-topographic", ...) need an ArcGIS
-  // Location Platform API key (esriConfig.apiKey), which this app does not configure.
+  // Id basemap legacy (es. "hybrid", "streets-vector"); i nuovi id stile richiedono una ArcGIS Location Platform API key non configurata qui.
   return Basemap.fromId(basemapId) ?? createOsmBasemap()
 }
 
@@ -168,33 +152,10 @@ function resolveMap(): Map {
         : new WebMap({ portalItem: { id: mapId } }))
     : new Map({ basemap: resolveFallbackBasemap() })
 
-  // 👉 TEST LAYER ADD
-  // const testLayer = createTestLayer()
-  // map.add(testLayer)
-
-  // const testLayer2 = createAreaTutelateLayer()
-  // map.add(testLayer2)
-
   return map
 }
 
 let _initId = 0
-
-// function createAreaTutelateLayer() {
-//   return new MapImageLayer({
-//     url: 'https://mappe.regione.vda.it/domini1/rest/services/Public/Ambiti/MapServer',
-//     title: 'Aree Tutelate (Valle d\'Aosta)',
-//     opacity: 0.8,
-//     sublayers: [
-//       { id: 0, visible: true },
-//       { id: 1, visible: true },
-//       { id: 2, visible: true },
-//       { id: 3, visible: true },
-//       { id: 4, visible: true },
-//       { id: 5, visible: true },
-//     ]
-//   })
-// }
 
 async function initializeMap(): Promise<void> {
   const myId = ++_initId
@@ -239,11 +200,8 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
   <div class="viewer-page" :class="{ 'sidebar-open': appStore.sidebarOpen }">
     <header class="viewer-header">
       <div class="brand-block">
-        <img v-if="logoUrl" class="brand-logo" :src="logoUrl" alt="Logo" />
-        <div class="brand-copy">
-          <p class="brand-kicker">Hello GIS</p>
-          <h1>{{ pageTitle }}</h1>
-        </div>
+        <span class="brand-title">Geonavigatore</span>
+        <span class="demo-badge">DEMO</span>
       </div>
 
       <div class="header-actions">
@@ -284,7 +242,8 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
               />
             </li>
             <li
-              v-if="activeWidget === item.key && appStore.sidebarOpen"
+              v-if="openedWidgetKeys.includes(item.key)"
+              v-show="activeWidget === item.key && appStore.sidebarOpen"
               class="accordion-panel"
               :style="panelStyle(item)"
             >

@@ -4,8 +4,13 @@ import App from './App.vue'
 import { router } from './stores/router/index'
 import { useAppStore } from './stores/app.store.ts'
 import type { AppConfig } from './stores/router/types/config.types'
+import { loadFonts } from 'bootstrap-italia'
+import './style.css'
 import '@arcgis/core/assets/esri/themes/light/main.css'
 import '@mdi/font/css/materialdesignicons.css'
+import 'bootstrap-italia/dist/css/bootstrap-italia.min.css'
+
+loadFonts(`${import.meta.env.BASE_URL}fonts/bootstrap-italia`)
 
 // Carica la configurazione prima dell'avvio dell'app Vue.
 async function loadConfig(): Promise<AppConfig | null> {

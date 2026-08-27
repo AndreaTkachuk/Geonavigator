@@ -6,12 +6,15 @@
 }
 
 .viewer-header {
-  min-height: 86px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 16px 24px 14px;
+  padding: 10px 24px;
   background: rgba(255, 255, 255, 0.86);
   border-bottom: 1px solid var(--line);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
@@ -22,33 +25,30 @@
 .brand-block {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   min-width: 0;
 }
 
-.brand-logo {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-}
-
-.brand-copy {
-  min-width: 0;
-}
-
-.brand-kicker {
-  margin: 0 0 4px;
-  font-size: 0.86rem;
-  text-transform: uppercase;
-  letter-spacing: 0.11em;
-  color: var(--accent-deep);
-}
-
-.brand-copy h1 {
-  margin: 0;
-  font-size: clamp(1.25rem, 2vw, 2rem);
-  line-height: 1.1;
+.brand-title {
+  font-size: 1.3rem;
+  font-weight: 700;
   color: var(--text-strong);
+  white-space: nowrap;
+}
+
+.demo-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #e8590c;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  flex: 0 0 auto;
 }
 
 .header-actions {
@@ -72,9 +72,9 @@
 }
 
 .dim-toggle {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent-deep);
+  background: rgba(255, 255, 255, 0.8);
+  border: none;
+  color: #0066cc;
   font-weight: 600;
 }
 
@@ -87,6 +87,7 @@
 
 .viewer-sidebar {
   flex: 0 0 auto;
+  min-height: 0;
   z-index: 50;
   width: 480px;
   display: flex;
@@ -124,7 +125,7 @@
 }
 
 .sidebar-item:hover {
-  background: var(--accent-soft);
+  background: rgba(17, 32, 25, 0.05);
 }
 
 .sidebar-separator {
@@ -137,7 +138,7 @@
 .sidebar-icon {
   flex: 0 0 auto;
   font-size: 1.25rem;
-  color: var(--accent-deep);
+  color: #0066cc;
   width: 24px;
   text-align: center;
 }
@@ -161,7 +162,7 @@
   background: transparent;
   cursor: pointer;
   white-space: nowrap;
-  color: var(--accent-deep);
+  color: #0066cc;
   font-size: 0.9rem;
   transition: background 120ms;
   width: 100%;
@@ -169,13 +170,14 @@
 }
 
 .sidebar-footer:hover {
-  background: var(--accent-soft);
+  background: rgba(17, 32, 25, 0.05);
 }
 
 .map-stage {
   flex: 1 1 0;
   position: relative;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 

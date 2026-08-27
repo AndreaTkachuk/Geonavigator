@@ -1,6 +1,6 @@
 :root {
-  --font-sans: 'Trebuchet MS', 'Segoe UI', sans-serif;
-  --font-heading: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  --font-sans: 'Titillium Web', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  --font-heading: 'Titillium Web', 'Trebuchet MS', 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
   --app-bg: #e9f0ea;
   --app-bg-deep: #d8e3d9;
@@ -29,9 +29,11 @@ html,
 body,
 #app {
   height: 100%;
+  min-height: 100dvh;
   margin: 0 !important;
   padding: 0 !important;
-  overflow: hidden;
+  overflow: hidden !important;
+  overscroll-behavior: none;
 }
 
 body {

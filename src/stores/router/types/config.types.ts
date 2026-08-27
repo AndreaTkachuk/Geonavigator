@@ -1,5 +1,4 @@
-// ─── Типи конфігурації (аналог environment.model.ts) ──────────────────────────
-// Структура відповідає config.json з Angular-проекту
+// Tipi di configurazione, struttura equivalente a config.json del progetto Angular.
 
 export interface AppConfig {
   version: string
