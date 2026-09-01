@@ -8,6 +8,11 @@ export interface RoadGraph {
   features: RoadFeature[]
 }
 
+export interface JunctionFeature {
+  attributes: { OBJECTID: number; [key: string]: any }
+  geometry: { x: number; y: number }
+}
+
 // Tolleranza di snap dei nodi: estremi di segmenti entro questa distanza condividono la stessa chiave di nodo.
 const NODE_SNAP_TOLERANCE_METERS = 1.5
 // Latitudine di riferimento (Valle d'Aosta) per la conversione gradi→metri con proiezione equirettangolare locale.
@@ -95,7 +100,12 @@ function addEdge(
 }
 
 const ROAD_SERVICE_QUERY_URL =
-  'https://portalgis.wheretech.it/server/rest/services/INVA/INVA_Network/MapServer/8/query'
+  'https://portalgis.wheretech.it/server/rest/services/INVA/inva_network_analysis/MapServer/8/query'
+const JUNCTIONS_SERVICE_QUERY_URL =
+  'https://portalgis.wheretech.it/server/rest/services/INVA/inva_network_analysis/MapServer/7/query'
+// SR nativo del network dataset (confermato via metadati REST del NAServer): usarlo come outSR
+// evita di dover riproiettare le junction lato client prima di passarle come facilities.
+export const NETWORK_SR_WKID = 23032
 const PAGE_SIZE = 2000
 
 function isValidRoadFeature(f: any): f is RoadFeature {
@@ -196,7 +206,7 @@ export async function loadRoadData(): Promise<RoadGraph> {
     return { nodeMap, features }
   } catch (error) {
     console.error(
-      'Error loading road data. Se l\'errore riportato dal browser menziona CORS/Cross-Origin, '
+      'Errore nel caricamento dei dati stradali. Se l\'errore riportato dal browser menziona CORS/Cross-Origin, '
       + 'occorre abilitare CORS per questa origine sul portale GIS (configurazione lato server, '
       + 'non risolvibile dal codice del progetto):',
       error
@@ -207,4 +217,49 @@ export async function loadRoadData(): Promise<RoadGraph> {
 
 export function getNodeKey(x: number, y: number): string {
   return snapNodeKey(x, y)
+}
+
+// Interroga le junction del network dataset per OBJECTID, pre-riproiettate a NETWORK_SR_WKID
+// dal servizio stesso (outSR): servono come facilities per il calcolo delle isole disconnesse.
+export async function queryJunctionsByOids(oids: number[]): Promise<JunctionFeature[]> {
+  if (oids.length === 0) return []
+
+  const params = new URLSearchParams({
+    where: `OBJECTID IN (${oids.join(',')})`,
+    outFields: '*',
+    returnGeometry: 'true',
+    outSR: String(NETWORK_SR_WKID),
+    f: 'json',
+  })
+
+  let response: Response
+  try {
+    response = await fetch(`${JUNCTIONS_SERVICE_QUERY_URL}?${params.toString()}`)
+  } catch (err) {
+    throw new Error(
+      'Impossibile raggiungere il servizio junction del portale GIS (portalgis.wheretech.it). '
+      + 'Verifica la connessione o riprova più tardi.'
+    )
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Impossibile raggiungere il servizio junction del portale GIS (portalgis.wheretech.it). `
+      + `Il servizio ha risposto con stato ${response.status}.`
+    )
+  }
+
+  const payload = await response.json()
+
+  if (payload.error) {
+    throw new Error(
+      `Il servizio junction del portale GIS (portalgis.wheretech.it) ha restituito un errore: `
+      + `${payload.error.message ?? 'errore sconosciuto'}`
+    )
+  }
+
+  return (payload.features ?? []).filter(
+    (f: any): f is JunctionFeature =>
+      typeof f?.attributes?.OBJECTID === 'number' && typeof f?.geometry?.x === 'number' && typeof f?.geometry?.y === 'number'
+  )
 }
