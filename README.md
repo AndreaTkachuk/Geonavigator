@@ -1,5 +1,7 @@
 # Geonavigatore
 
+🔗 **Sito pubblicato**: [andreatkachuk.github.io/Geonavigator](https://andreatkachuk.github.io/Geonavigator/)
+
 Geonavigatore e' un visualizzatore di mappe basato su ArcGIS Maps SDK for JavaScript, con un widget di **analisi di isolamento stradale**: si disegnano una o piu' barriere sulla rete viaria e l'app calcola, tramite un servizio ArcGIS Network Analyst, quali strade vengono tagliate e quali restano isolate dalla rete principale.
 
 ## Funzionalita' principali
