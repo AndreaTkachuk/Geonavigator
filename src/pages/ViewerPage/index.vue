@@ -10,6 +10,7 @@ import '@arcgis/map-components/dist/components/arcgis-home'
 import '@arcgis/map-components/dist/components/arcgis-zoom'
 import { useAppStore } from '../../stores/app.store'
 import '@arcgis/map-components/dist/components/arcgis-basemap-gallery'
+import '@arcgis/map-components/dist/components/arcgis-elevation-profile'
 import '@arcgis/map-components/dist/components/arcgis-expand'
 // Caricati solo quando il relativo pannello viene aperto per la prima volta: Barrier da solo porta con se'
 // SketchViewModel/GraphicsLayer/GeoJSONLayer/geometryEngine/webMercatorUtils, che altrimenti finiscono nel
@@ -133,6 +134,13 @@ const topMenuLinks = computed(
 )
 const is3D = computed(() => (props.mapType ?? viewerConfig.value?.type ?? '2D') === '3D')
 
+// Un widget/tool va renderizzato solo se dichiarato in config.json (per "name") e non esplicitamente
+// nascosto: niente hardcoding di strumenti sulla mappa (Home, Zoom, Sfondi, Profilo altimetrico, ...)
+// che l'utente non ha scelto di attivare in config.
+function isWidgetVisible(name: string): boolean {
+  return (viewerConfig.value?.widgets ?? []).some((w) => w.name === name && w.visible !== false)
+}
+
 // Calcite icon name → MDI class
 const ICON_MAP: Record<string, string> = {
   'plus-circle':    'mdi-plus-circle-outline',
@@ -237,14 +245,17 @@ async function resolveMap(): Promise<Map> {
 
     if (!mapId) {
       await sceneComponentReady
-      return new Map({ basemap: resolveFallbackBasemap() })
+      // "world-elevation" e' lo shorthand di ArcGIS per il servizio di elevazione globale Esri: senza,
+      // map.ground resta un Ground vuoto (0 layer) e widget come l'elevation profile falliscono con
+      // "No profile available" perche' non hanno nessuna superficie da cui campionare le quote.
+      return new Map({ basemap: resolveFallbackBasemap(), ground: 'world-elevation' })
     }
 
     const [{ default: WebScene }] = await Promise.all([import('@arcgis/core/WebScene'), sceneComponentReady])
     return new WebScene({ portalItem: { id: mapId } })
   }
 
-  if (!mapId) return new Map({ basemap: resolveFallbackBasemap() })
+  if (!mapId) return new Map({ basemap: resolveFallbackBasemap(), ground: 'world-elevation' })
   return new WebMap({ portalItem: { id: mapId } })
 }
 
@@ -373,15 +384,18 @@ watch(() => appStore.currentMapConfig, () => { void initializeMap() })
 
       <main class="map-stage">
         <arcgis-map v-if="!is3D" ref="mapEl" class="map-container">
-          <arcgis-home slot="top-left" />
-          <arcgis-zoom slot="top-left" />
-          <arcgis-expand slot="top-right" expand-icon="basemap">
+          <arcgis-home v-if="isWidgetVisible('Home')" slot="top-left" />
+          <arcgis-zoom v-if="isWidgetVisible('Zoom')" slot="top-left" />
+          <arcgis-expand v-if="isWidgetVisible('BasemapGallery')" slot="top-right" expand-icon="basemap">
             <arcgis-basemap-gallery />
+          </arcgis-expand>
+          <arcgis-expand v-if="isWidgetVisible('ElevationProfile')" slot="top-right" expand-icon="altitude">
+            <arcgis-elevation-profile />
           </arcgis-expand>
         </arcgis-map>
         <arcgis-scene v-else ref="mapEl" class="map-container">
-          <arcgis-home slot="top-left" />
-          <arcgis-zoom slot="top-left" />
+          <arcgis-home v-if="isWidgetVisible('Home')" slot="top-left" />
+          <arcgis-zoom v-if="isWidgetVisible('Zoom')" slot="top-left" />
         </arcgis-scene>
 
         <div v-if="!mapIsReady" class="map-loading-overlay">

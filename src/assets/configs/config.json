@@ -192,6 +192,34 @@
             "expandIcon": "puzzle",
             "expandTooltip": "Sample widget"
           }
+        },
+        {
+          "name": "Home",
+          "position": "top-left",
+          "visible": true
+        },
+        {
+          "name": "Zoom",
+          "position": "top-left",
+          "visible": true
+        },
+        {
+          "name": "BasemapGallery",
+          "position": "top-right",
+          "visible": true,
+          "expandConfig": {
+            "expandIcon": "basemap",
+            "expandTooltip": "Sfondi"
+          }
+        },
+        {
+          "name": "ElevationProfile",
+          "position": "top-right",
+          "visible": true,
+          "expandConfig": {
+            "expandIcon": "altitude",
+            "expandTooltip": "Profilo altimetrico"
+          }
         }
       ],
       "layers": [],
