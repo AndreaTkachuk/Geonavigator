@@ -4,6 +4,7 @@ declare module '@arcgis/core/geometry/projectionUtils' {
   import type Geometry from '@arcgis/core/geometry/Geometry'
   import type Point from '@arcgis/core/geometry/Point'
   import type Polyline from '@arcgis/core/geometry/Polyline'
+  import type Polygon from '@arcgis/core/geometry/Polygon'
   import type SpatialReference from '@arcgis/core/geometry/SpatialReference'
 
   export function load(): Promise<void>
@@ -20,6 +21,14 @@ declare module '@arcgis/core/geometry/projectionUtils' {
     geometries: Polyline[],
     outSpatialReference: SpatialReference | { wkid: number }
   ): Polyline[]
+  export function project(
+    geometry: Polygon,
+    outSpatialReference: SpatialReference | { wkid: number }
+  ): Polygon
+  export function project(
+    geometries: Polygon[],
+    outSpatialReference: SpatialReference | { wkid: number }
+  ): Polygon[]
   export function project(
     geometry: Geometry,
     outSpatialReference: SpatialReference | { wkid: number }
