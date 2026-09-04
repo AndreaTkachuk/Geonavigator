@@ -17,6 +17,7 @@ export const useBarrierAnalysisStore = defineStore('barrierAnalysis', () => {
   const logMessages = ref<string[]>([])
   const blockedCount = ref(0)
   const disconnectedCount = ref(0)
+  const isolatedPopulation = ref(0)
 
   const zoomToBarrierAction = ref<((barrierId: string) => void) | null>(null)
   const deleteBarrierAction = ref<((barrierId: string) => void) | null>(null)
@@ -42,6 +43,7 @@ export const useBarrierAnalysisStore = defineStore('barrierAnalysis', () => {
     logMessages,
     blockedCount,
     disconnectedCount,
+    isolatedPopulation,
     registerActions,
     zoomToBarrier,
     deleteBarrier,

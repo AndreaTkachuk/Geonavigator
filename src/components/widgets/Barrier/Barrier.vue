@@ -3,14 +3,16 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel'
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer'
 import GeoJSONLayer from '@arcgis/core/layers/GeoJSONLayer'
+import FeatureLayer from '@arcgis/core/layers/FeatureLayer'
 import Graphic from '@arcgis/core/Graphic'
 import Polyline from '@arcgis/core/geometry/Polyline'
+import Polygon from '@arcgis/core/geometry/Polygon'
 import Point from '@arcgis/core/geometry/Point'
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine'
 import * as projectionUtils from '@arcgis/core/geometry/projectionUtils'
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils'
 import { loadRoadData, queryJunctionsByOids, NETWORK_SR_WKID } from '../../utils/roadDataLoader'
-import { solveIsolatedIslands } from '../../utils/serviceAreaAnalyzer'
+import { solveIsolatedIslands, type IslandGroup } from '../../utils/serviceAreaAnalyzer'
 import { useBarrierAnalysisStore, type BarrierSummary } from '../../../stores/barrierAnalysis.store'
 
 const props = defineProps<{
@@ -39,6 +41,8 @@ let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
 // Dati
 let roadGraph: Map<string, Array<{ neighbor: string; oid: number }>> | null = null
 let allFeatures: any[] = []
+// OBJECTID -> feature strada, per lookup O(1) nel calcolo della popolazione isolata.
+let roadFeatureByOid = new Map<number, any>()
 // Contatore progressivo per id/etichetta delle barriere: non si riassegna mai, cosi' eliminarne una in mezzo alla lista non rinumera le altre.
 let nextBarrierNumber = 1
 
@@ -48,8 +52,14 @@ let sketchLayer: GraphicsLayer | null = null
 let cutRoadsLayer: GraphicsLayer | null = null   // strade tagliate dalle barriere (blu tratteggiato), calcolo locale
 let facilityLayer: GraphicsLayer | null = null   // junction usate come facilities nel calcolo (marker neri)
 let islandsLayer: GraphicsLayer | null = null    // isole disconnesse restituite dal servizio (verde = rete principale, rosso = isole)
+let isolatedHexagonsLayer: GraphicsLayer | null = null // esagoni di popolazione toccati da un'isola disconnessa (arancione)
 let sketchVM: SketchViewModel | null = null
 const SELECT_CLICK_COOLDOWN_MS = 600
+
+// Esagoni con popolazione, usati per interrogare (e disegnare) la popolazione isolata per ciascuna isola
+// disconnessa: il FeatureLayer stesso non viene mai aggiunto alla mappa, solo interrogato.
+const HEXAGONS_LAYER_URL = 'https://portalgis.wheretech.it/server/rest/services/Hosted/inva_demo_esagoni/FeatureServer/0'
+const hexagonsLayer = new FeatureLayer({ url: HEXAGONS_LAYER_URL, title: 'Esagoni popolazione' })
 
 function log(msg: string) {
   barrierStore.logMessages.unshift(msg)
@@ -85,6 +95,7 @@ async function loadRoads() {
     const roadData = await loadRoadData()
     roadGraph = roadData.nodeMap
     allFeatures = roadData.features
+    roadFeatureByOid = new Map(allFeatures.map((f) => [f.attributes.OBJECTID, f]))
 
     statusText.value = `Grafo pronto: ${roadGraph.size} nodi, ${allFeatures.length} strade`
     log(`Grafo costruito: ${roadGraph.size} nodi`)
@@ -198,12 +209,14 @@ function initializeLayers() {
 
   // elevationInfo 'on-the-ground' clampa la barriera al terreno: niente maniglia verticale in 3D, l'altezza segue sempre la superficie.
   sketchLayer = new GraphicsLayer({ title: 'Barriere', elevationInfo: { mode: 'on-the-ground' } as any })
+  isolatedHexagonsLayer = new GraphicsLayer({ title: 'Esagoni isolati' })
   islandsLayer = new GraphicsLayer({ title: 'Isole disconnesse' })
   facilityLayer = new GraphicsLayer({ title: 'Junction (facilities)' })
   cutRoadsLayer = new GraphicsLayer({ title: 'Strade tagliate' })
 
-  // Ordine dei layer = ordine di disegno: le strade tagliate devono restare sempre visibili sopra le isole colorate.
-  props.view.map.addMany([roadsLayer, islandsLayer, facilityLayer, cutRoadsLayer, sketchLayer])
+  // Ordine dei layer = ordine di disegno: gli esagoni (aree) restano sotto le linee delle strade, che a loro
+  // volta devono restare sempre visibili sopra le isole colorate.
+  props.view.map.addMany([roadsLayer, isolatedHexagonsLayer, islandsLayer, facilityLayer, cutRoadsLayer, sketchLayer])
 
   // Aspetta che il layer sia caricato
   roadsLayer.load().then(async () => {
@@ -234,14 +247,14 @@ watch(() => props.view, (newView, oldView) => {
   // (che distrugge anche i layer ancora presenti nella sua mappa) li porti via con se'. Senza questo,
   // riaggiungerli alla nuova view fallisce con "Instance of ... is already destroyed": il layer tecnicamente
   // compare in map.layers ma il suo layerview non si crea mai, quindi resta invisibile.
-  const ownedLayers = [roadsLayer, islandsLayer, facilityLayer, cutRoadsLayer, sketchLayer].filter(
+  const ownedLayers = [roadsLayer, isolatedHexagonsLayer, islandsLayer, facilityLayer, cutRoadsLayer, sketchLayer].filter(
     (l): l is NonNullable<typeof l> => l != null
   )
   if (oldView?.map && ownedLayers.length > 0) {
     oldView.map.removeMany(ownedLayers)
   }
 
-  if (!newView || !roadsLayer || !sketchLayer || !islandsLayer || !facilityLayer || !cutRoadsLayer) return
+  if (!newView || !roadsLayer || !sketchLayer || !isolatedHexagonsLayer || !islandsLayer || !facilityLayer || !cutRoadsLayer) return
 
   newView.map.addMany(ownedLayers)
 
@@ -324,6 +337,106 @@ function buildBarrierSummaries(cutOidsByBarrier: Map<string, Set<number>>, isola
   })
 }
 
+// Per ciascuna isola disconnessa (esclusa la rete principale all'indice 0), unisce le geometrie delle sue
+// strade e interroga il layer esagoni-popolazione per stimare quanti abitanti restano isolati. Un esagono
+// toccato da piu' isole viene conteggiato una sola volta (nella prima isola che lo incontra), per non
+// gonfiare il totale complessivo.
+async function computeIsolatedPopulation(distinctGroups: IslandGroup[]): Promise<number> {
+  let totalIsolatedPopulation = 0
+  const popSummaryLines: string[] = []
+  const countedHexOids = new Set<number>()
+  const isolatedHexPolygons: Polygon[] = []
+
+  for (let idx = 0; idx < distinctGroups.length; idx++) {
+    if (idx === 0) continue // rete principale, non e' "isolata"
+    const group = distinctGroups[idx]
+
+    const geometries = [...group.oidPaths.keys()]
+      .map((oid) => roadFeatureByOid.get(oid))
+      .filter((f) => f)
+      .map((f) => new Polyline({ paths: f.geometry.paths, spatialReference: { wkid: 4326 } }))
+
+    if (geometries.length === 0) continue
+
+    let unionGeom: any
+    try {
+      unionGeom = geometries.length === 1 ? geometries[0] : geometryEngine.union(geometries)
+    } catch (err) {
+      console.error(`Errore unendo le geometrie per l'isola ${idx}:`, err)
+      continue
+    }
+
+    const hexQuery = hexagonsLayer.createQuery()
+    hexQuery.geometry = unionGeom
+    hexQuery.spatialRelationship = 'intersects'
+    hexQuery.outFields = ['objectid', 'totale_abitanti']
+    hexQuery.returnGeometry = true
+    hexQuery.outSpatialReference = { wkid: NETWORK_SR_WKID } as any
+
+    let hexResult
+    try {
+      hexResult = await hexagonsLayer.queryFeatures(hexQuery)
+    } catch (err) {
+      console.error(`Errore interrogando gli esagoni per l'isola ${idx}:`, err)
+      log(`Errore nel calcolo della popolazione isolata per l'isola ${idx} (vedi console).`)
+      continue
+    }
+
+    let popolazioneIsola = 0
+    let esagoniGiaContati = 0
+
+    hexResult.features.forEach((f: any) => {
+      const hexOid = f.attributes.objectid
+      if (countedHexOids.has(hexOid)) {
+        esagoniGiaContati++
+        return // gia' conteggiato da un'altra isola, evita il doppio conteggio
+      }
+      countedHexOids.add(hexOid)
+      popolazioneIsola += f.attributes.totale_abitanti || 0
+      if (f.geometry?.rings) {
+        isolatedHexPolygons.push(new Polygon({ rings: f.geometry.rings, spatialReference: { wkid: NETWORK_SR_WKID } }))
+      }
+    })
+
+    totalIsolatedPopulation += popolazioneIsola
+
+    let line = `Isola ${idx}: ${popolazioneIsola} abitanti isolati (${hexResult.features.length - esagoniGiaContati} esagoni)`
+    if (esagoniGiaContati > 0) {
+      line += ` - ${esagoniGiaContati} esagono/i gia' conteggiato/i da un'altra isola, escluso/i dal totale`
+    }
+    popSummaryLines.push(line)
+  }
+
+  if (popSummaryLines.length > 0) {
+    popSummaryLines.forEach((line) => log(line))
+    log(`Totale complessivo: ${totalIsolatedPopulation} abitanti isolati.`)
+  } else {
+    log('Nessuna isola disconnessa: nessun abitante isolato.')
+  }
+
+  // Disegna gli esagoni isolati (deduplicati sopra): riproiezione in un'unica chiamata batch, come per le
+  // altre geometrie del widget, per non bloccare il thread principale con tante chiamate singole.
+  isolatedHexagonsLayer?.removeAll()
+  if (isolatedHexPolygons.length > 0) {
+    await projectionUtils.load()
+    const wgs84Hexagons = projectionUtils.project(isolatedHexPolygons, { wkid: 4326 })
+    const hexGraphics = wgs84Hexagons.map(
+      (geometry) =>
+        new Graphic({
+          geometry,
+          symbol: {
+            type: 'simple-fill' as const,
+            color: [255, 165, 0, 0.35],
+            outline: { color: [255, 140, 0], width: 1.5 },
+          } as any,
+        })
+    )
+    isolatedHexagonsLayer?.addMany(hexGraphics)
+  }
+
+  return totalIsolatedPopulation
+}
+
 // Punto d'ingresso comune per creazione/spostamento/eliminazione barriera: ricalcola l'analisi e aggiorna la UI.
 async function recomputeAndApply(actionMessage: string) {
   log(actionMessage)
@@ -341,8 +454,10 @@ async function recomputeAndApply(actionMessage: string) {
 
   if (allCutOids.size === 0) {
     barrierStore.disconnectedCount = 0
+    barrierStore.isolatedPopulation = 0
     islandsLayer?.removeAll()
     facilityLayer?.removeAll()
+    isolatedHexagonsLayer?.removeAll()
     barrierStore.barriers = buildBarrierSummaries(cutOidsByBarrier, new Set())
     statusText.value = 'Nessuna strada tagliata dalle barriere'
     return
@@ -361,8 +476,10 @@ async function recomputeAndApply(actionMessage: string) {
   if (junctionOids.size === 0) {
     log('Nessuna junction associata alle strade tagliate (campi Junction1_OID/2_OID vuoti).')
     barrierStore.disconnectedCount = 0
+    barrierStore.isolatedPopulation = 0
     islandsLayer?.removeAll()
     facilityLayer?.removeAll()
+    isolatedHexagonsLayer?.removeAll()
     barrierStore.barriers = buildBarrierSummaries(cutOidsByBarrier, new Set())
     return
   }
@@ -420,7 +537,9 @@ async function recomputeAndApply(actionMessage: string) {
   if (distinctGroups.length === 0) {
     log('Nessuna polilinea restituita da nessuna facility.')
     islandsLayer?.removeAll()
+    isolatedHexagonsLayer?.removeAll()
     barrierStore.disconnectedCount = 0
+    barrierStore.isolatedPopulation = 0
     barrierStore.barriers = buildBarrierSummaries(cutOidsByBarrier, new Set())
     statusText.value = `${barrierStore.blockedCount} ${pluralize(barrierStore.blockedCount, 'strada tagliata', 'strade tagliate')}: 0 strade isolate`
     return
@@ -468,6 +587,8 @@ async function recomputeAndApply(actionMessage: string) {
   log(`Analisi completata: ${distinctGroups.length} isola/e distinta/e, ${barrierStore.disconnectedCount} strade isolate`)
 
   barrierStore.barriers = buildBarrierSummaries(cutOidsByBarrier, isolatedOids)
+
+  barrierStore.isolatedPopulation = await computeIsolatedPopulation(distinctGroups)
 }
 
 function zoomToBarrier(barrierId: string) {
@@ -522,9 +643,11 @@ function applyCleanState() {
   cutRoadsLayer?.removeAll()
   facilityLayer?.removeAll()
   islandsLayer?.removeAll()
+  isolatedHexagonsLayer?.removeAll()
   barrierCount.value = 0
   barrierStore.blockedCount = 0
   barrierStore.disconnectedCount = 0
+  barrierStore.isolatedPopulation = 0
   barrierStore.barriers = []
   statusText.value = `Grafo pronto: ${roadGraph?.size ?? 0} nodi, ${allFeatures.length} strade`
 }
@@ -595,6 +718,9 @@ onUnmounted(() => {
           </span>
           <span v-if="barrierStore.disconnectedCount > 0" class="badge badge-outline-danger">
             <i class="mdi mdi-map-marker-off-outline me-1" />{{ barrierStore.disconnectedCount }} {{ pluralize(barrierStore.disconnectedCount, 'isolata', 'isolate') }}
+          </span>
+          <span v-if="barrierStore.isolatedPopulation > 0" class="badge badge-outline-warning">
+            <i class="mdi mdi-account-group-outline me-1" />{{ barrierStore.isolatedPopulation }} {{ pluralize(barrierStore.isolatedPopulation, 'abitante isolato', 'abitanti isolati') }}
           </span>
         </div>
       </div>
